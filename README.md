@@ -123,6 +123,14 @@ node apps/zcode-cli/packages/cli/dist/zcode.cjs --help
 
 ## 配置
 
+### 外链发布
+
+本仓库已迁入 `link-harness 2.0.0` 的外链批次、租约、验证邮箱、持久浏览器及完整发布技能。打开侧栏“外链发布”，配置自己的服务连接后选择批次；点击发布会启用当前工作区的 Backlinks 插件并创建任务。CLI 可启用 `backlinks` 插件后使用 `/backlink-publish`。
+
+完整功能对照、使用步骤、验证结果和回滚方法见 [中文交付文档](harness/backlinks/DELIVERY.zh-CN.md)，实现边界见 [迁移规范](harness/backlinks/SPEC.md)。
+
+### 通用配置
+
 根目录 [.env.example](.env.example) 提供服务地址与构建配置示例，可按需复制到 `.env`，本地覆盖放入 `.env.local`。Desktop 的开发环境通过 `dev:desktop:test` / `dev:desktop:prod` 选择。
 
 | 配置                                 | 用途                                             |

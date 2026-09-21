@@ -58,6 +58,8 @@ zcode plugins enable restore-legacy-sessions
 zcode plugins disable ios-simulator
 ```
 
+The bundled Backlinks plugin is also disabled by default. Enable it with `zcode plugins enable backlinks`, configure your Supermanager and Cloud Mail connections, then use `/backlink-publish` in a ZCode session. It includes the publishing and Google-session skills, a persistent browser, and the source `link-harness 2.0.0` playbooks. See the [Chinese delivery guide](../../harness/backlinks/DELIVERY.zh-CN.md) for setup, scope, validation and rollback.
+
 For local plugin development, put the plugin in any directory, then add it to the user config. Local plugin dirs default to enabled for that config.
 
 ```json
