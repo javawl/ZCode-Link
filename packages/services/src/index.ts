@@ -1,6 +1,13 @@
 // Descriptors & collection (browser-safe)
 export { type ServiceDescriptor, createServiceDescriptor } from "./descriptors.js";
 export { ServiceCollection } from "./collection.js";
+export { IBacklinksService } from "./backlinks/contract.js";
+export type {
+  BacklinkBatchDetail,
+  BacklinkBatchSummary,
+  BacklinksSettingsPatch,
+  BacklinksSettingsSnapshot,
+} from "./backlinks/contract.js";
 export {
   IModelSelectionService,
   IProviderSettingsService,

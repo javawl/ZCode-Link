@@ -38,9 +38,12 @@ import type { IPromptAttachmentTransferService } from "./prompt-attachment-trans
 import type { IWindowControllerService } from "./window-controller/windowController.js";
 import type { IOnboardingRecordService } from "./onboarding/onboardingRecord.js";
 import type { IConversationShareService } from "./conversation-share/conversationShare.js";
+import type { IBacklinksService } from "./backlinks/contract.js";
 
 /** UI 层消费的统一服务接口 */
 export interface IServiceAccessor {
+  /** 外链能力属于当前宿主；旧版本 Host 或测试 double 可不提供。 */
+  readonly backlinksService?: IBacklinksService;
   readonly fileService: IFileService;
   readonly mediaPreviewService?: IMediaPreviewService;
   readonly gitService: IGitService;

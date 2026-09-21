@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- 远程 workspace 服务注册需集中维护，以保持依赖注入顺序 */
 import {
   ServiceCollection,
+  IBacklinksService,
   IFileService,
   IMediaPreviewService,
   IGitService,
@@ -364,6 +365,10 @@ export function createRemoteWorkspaceServiceCollection(params: {
       createSettingsSyncService({ settingService: localSettingService }),
     )
     .register(IPromptAttachmentTransferService, params.promptAttachmentTransferService);
+  // 外链配置与插件同属目标 Host，不能复用 desktop 本机配置或另建本机服务。
+  if (params.connectionServices.backlinksService) {
+    services.register(IBacklinksService, params.connectionServices.backlinksService);
+  }
   registerHostApiNetworkTransportForDispose(services, hostApiNetworkTransport);
   registerRemoteProviderProvisioningExecutor(services, remoteProviderProvisioningService);
   return services;

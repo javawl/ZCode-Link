@@ -1,5 +1,6 @@
 import { ProxyChannel, type IChannelClient } from "@zcode/rpc";
 import {
+  IBacklinksService,
   IFileService,
   IMediaPreviewService,
   IGitService,
@@ -48,6 +49,7 @@ import {
  * 新增服务只需在此添加一个 getter。
  */
 export class RemoteServiceAccess implements IServiceAccessor {
+  readonly backlinksService: IBacklinksService;
   readonly fileService: IFileService;
   readonly mediaPreviewService: IMediaPreviewService;
   readonly gitService: IGitService;
@@ -92,6 +94,9 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly promptAttachmentTransferService: IPromptAttachmentTransferService;
 
   constructor(channelClient: IChannelClient) {
+    this.backlinksService = ProxyChannel.toService<IBacklinksService>(
+      channelClient.getChannel(IBacklinksService.channelName),
+    );
     this.fileService = ProxyChannel.toService<IFileService>(
       channelClient.getChannel(IFileService.channelName),
     );

@@ -15,7 +15,10 @@
         "@zcode/core#build",
         "@zcode/adapters#build",
         "@zcode/bootstrap#build",
-        "@zcode/i18n#build"
+        "@zcode/i18n#build",
+        "@zcode/node-repl-host#build",
+        "@zcode/browser-use-plugin#build",
+        "@zcode/backlinks-plugin#build"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -53,6 +56,10 @@
     },
     "clean": {
       "cache": false
+    },
+    "@zcode/backlinks-plugin#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "runtime/**"]
     },
     "@zcode/cli#build": {
       "dependsOn": ["^build"],

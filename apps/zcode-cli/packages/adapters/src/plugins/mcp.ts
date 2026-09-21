@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { findOfficialMcpReservedHeaders } from "@zcode/shared";
 import type {
-  McpOAuthConfig,
   McpServerConfig,
   McpServerRuntimeSource,
   PluginDiagnostic,
@@ -14,6 +13,7 @@ import { ZCODE_PLUGIN_ID_ENV_KEY } from "@zcode/shared";
 import type { LoadedPlugin } from "./types.js";
 import { isNotFoundError, isPluginOptionValue, isRecord, resolveInside } from "./helpers.js";
 import { buildOfficialProvenance, parseZCodeOfficialAuth } from "./mcp-official-auth.js";
+import { resolveMcpCommonOptions, resolveMcpOAuthConfig } from "./mcp-options.js";
 
 const SUPPORTED_MCP_TYPES = new Set(["stdio", "http", "sse"]);
 const TEMPLATE_PATTERN = /\$\{([^}]+)\}/g;
@@ -181,6 +181,7 @@ function resolveMcpServerConfig(
   if (!isRecord(server)) throw new Error("MCP server config must be an object");
   const type = typeof server.type === "string" ? server.type : inferMcpType(server);
   if (!SUPPORTED_MCP_TYPES.has(type)) throw new Error(`Unsupported MCP transport: ${type}`);
+  const commonOptions = resolveMcpCommonOptions(server);
   // ZCode 官方市场同时包含随应用装载的 Builtin Plugin 与按需安装的 CDN Plugin；后者运行时
   // source 为 `cache`，因此必须按 marketplace 身份归类，不能只看 loader source。
   const source: McpServerRuntimeSource = {
@@ -235,10 +236,9 @@ function resolveMcpServerConfig(
         typeof server.cwd === "string"
           ? resolveTemplate(server.cwd, context, { allowSensitive: false })
           : undefined,
-      enabled: typeof server.enabled === "boolean" ? server.enabled : undefined,
+      ...commonOptions,
       env,
       source,
-      timeoutMs: typeof server.timeoutMs === "number" ? server.timeoutMs : undefined,
       ...(officialAuth
         ? {
             auth: officialAuth,
@@ -253,7 +253,9 @@ function resolveMcpServerConfig(
   const headers = isRecord(server.headers)
     ? resolveStringRecord(server.headers, context, { allowSensitive: true })
     : undefined;
-  const oauth = resolveMcpOAuthConfig(server.oauth, context);
+  const oauth = resolveMcpOAuthConfig(server.oauth, (value, allowSensitive) =>
+    resolveTemplate(value, context, { allowSensitive }),
+  );
 
   if (officialAuth) {
     // 第一阶段不做优先级裁决：两种鉴权同时声明属于配置错误，直接禁用。
@@ -273,91 +275,23 @@ function resolveMcpServerConfig(
     return {
       type: "http",
       url: resolveTemplate(url, context, { allowSensitive: false }),
-      enabled: typeof server.enabled === "boolean" ? server.enabled : undefined,
+      ...commonOptions,
       headers,
       auth: officialAuth,
       source,
       // provenance 由宿主生成；即便 .mcp.json 里写了 official 字段也会被此处覆盖。
       official: buildOfficialProvenance(identity),
-      timeoutMs: typeof server.timeoutMs === "number" ? server.timeoutMs : undefined,
     };
   }
 
   return {
     type,
     url: resolveTemplate(url, context, { allowSensitive: false }),
-    enabled: typeof server.enabled === "boolean" ? server.enabled : undefined,
+    ...commonOptions,
     headers,
     oauth,
     source,
-    timeoutMs: typeof server.timeoutMs === "number" ? server.timeoutMs : undefined,
   } as McpServerConfig;
-}
-
-/**
- * 严格解析 `auth` 的实现已移到 mcp-official-auth.ts（mcp.ts 已到 max-lines 上限）。
- */
-function resolveMcpOAuthConfig(
-  value: unknown,
-  context: VariableContext,
-): McpOAuthConfig | undefined {
-  if (!isRecord(value)) return undefined;
-  if (value.type === "client_credentials") {
-    return {
-      type: "client_credentials",
-      clientId: resolveTemplate(
-        requireString(value.clientId, "MCP OAuth client_credentials requires clientId"),
-        context,
-        { allowSensitive: false },
-      ),
-      clientSecret: resolveTemplate(
-        requireString(value.clientSecret, "MCP OAuth client_credentials requires clientSecret"),
-        context,
-        { allowSensitive: true },
-      ),
-      ...(typeof value.clientName === "string"
-        ? {
-            clientName: resolveTemplate(value.clientName, context, { allowSensitive: false }),
-          }
-        : {}),
-      ...(typeof value.scope === "string"
-        ? {
-            scope: resolveTemplate(value.scope, context, { allowSensitive: false }),
-          }
-        : {}),
-    };
-  }
-  if (value.type === "authorization_code") {
-    return {
-      type: "authorization_code",
-      ...(typeof value.clientId === "string"
-        ? {
-            clientId: resolveTemplate(value.clientId, context, { allowSensitive: false }),
-          }
-        : {}),
-      ...(typeof value.clientSecret === "string"
-        ? {
-            clientSecret: resolveTemplate(value.clientSecret, context, { allowSensitive: true }),
-          }
-        : {}),
-      ...(typeof value.clientName === "string"
-        ? {
-            clientName: resolveTemplate(value.clientName, context, { allowSensitive: false }),
-          }
-        : {}),
-      ...(typeof value.redirectPath === "string"
-        ? {
-            redirectPath: resolveTemplate(value.redirectPath, context, { allowSensitive: false }),
-          }
-        : {}),
-      ...(typeof value.scope === "string"
-        ? {
-            scope: resolveTemplate(value.scope, context, { allowSensitive: false }),
-          }
-        : {}),
-    };
-  }
-  throw new Error(`Unsupported MCP OAuth type: ${String(value.type)}`);
 }
 
 function inferMcpType(server: Record<string, unknown>): string {
@@ -433,7 +367,6 @@ function resolveTemplate(
       return envValue;
     }
     if (options.allowSensitive && ENVIRONMENT_VARIABLE_NAME_PATTERN.test(name)) {
-
       // token。只在敏感 sink 解析，避免 secret 被展开到 args、URL 或其它可见字段。
       const envValue = context.env[name];
       if (envValue === undefined)

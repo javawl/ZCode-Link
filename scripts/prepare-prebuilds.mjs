@@ -32,6 +32,7 @@ import {
 } from "./deterministic-tar-archive.mjs";
 import { runCommand } from "./spawn-command.mjs";
 import { resolveIntranetDepsBaseUrl } from "./intranetDefaults.mjs";
+import { backlinksPluginPackage } from "./backlinks-plugin-assets.mjs";
 
 export { computeComponentSourceSha256, packComponentSourceAsArchive };
 
@@ -91,6 +92,7 @@ const browserUseRequiredRuntimePaths = [
   "skills/web-gui-tester/SKILL.md",
 ];
 const remoteOfficialPluginPackages = [
+  backlinksPluginPackage,
   // 44b25ed46c「remove bundled plugins except browser use and cua」删掉了其余
   // 内置插件源码，但漏改这份清单，bootstrap:with-remote 在 staging 第一个 manifest 就抛
   // missing。此处与 packages/desktop/scripts/prepare-agent-node-bundle.mjs 的桌面 seed
@@ -129,6 +131,7 @@ const remoteOfficialPluginTopLevelPaths = new Set([
   "hooks",
   "output-styles",
   "package.json",
+  "runtime",
   "scripts",
   "skills",
   "templates",
@@ -145,6 +148,8 @@ function shouldCopyOfficialPluginAsset(sourcePath) {
   return !excludedOfficialPluginAssetNames.has(name) && !name.endsWith(".pyc");
 }
 const remoteOfficialPluginRequiredPaths = [
+  "packages/backlinks-plugin/.zcode-plugin/plugin.json",
+  ...backlinksPluginPackage.requiredRuntimePaths.map((path) => `packages/backlinks-plugin/${path}`),
   "packages/browser-use-plugin/.zcode-plugin/plugin.json",
   "packages/node-repl-host/.zcode-plugin/plugin.json",
 ];

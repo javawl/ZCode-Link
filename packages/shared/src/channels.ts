@@ -72,6 +72,8 @@ import type {
 
 /** RPC 服务频道名。与 ServiceDescriptor.channelName 对应。 */
 export const ServiceChannels = {
+  /** 外链配置与批次查询；发布沿用 Agent 官方插件。 */
+  Backlinks: "backlinks",
   File: "file",
   MediaPreview: "media-preview",
   System: "system",

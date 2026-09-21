@@ -2,7 +2,10 @@ import { posix } from "node:path";
 
 export const REMOTE_AGENT_OFFICIAL_PLUGIN_DIR_NAME = "packages";
 
-export const REMOTE_AGENT_OFFICIAL_PLUGIN_PACKAGE_NAMES = ["browser-use-plugin"] as const;
+export const REMOTE_AGENT_OFFICIAL_PLUGIN_PACKAGE_NAMES = [
+  "browser-use-plugin",
+  "backlinks-plugin",
+] as const;
 
 export const REMOTE_AGENT_OFFICIAL_PLUGIN_INCLUDED_TOP_LEVEL_PATHS = [
   ".mcp.json",
@@ -16,6 +19,7 @@ export const REMOTE_AGENT_OFFICIAL_PLUGIN_INCLUDED_TOP_LEVEL_PATHS = [
   "hooks",
   "output-styles",
   "package.json",
+  "runtime",
   // Browser bootstrap 会从插件根目录动态导入 scripts/browser-client.mjs。
   // 开发态 SSH 部署若漏掉 scripts，会出现 MCP server 已启动但浏览器绑定无法初始化的半成品状态。
   "scripts",
@@ -45,6 +49,14 @@ export const REMOTE_AGENT_OFFICIAL_PLUGIN_REQUIRED_RELATIVE_PATHS = [
   "browser-use-plugin/scripts/browser-client.mjs",
   "browser-use-plugin/skills/control-browser/SKILL.md",
   "browser-use-plugin/skills/web-gui-tester/SKILL.md",
+  "backlinks-plugin/commands/backlink-publish.md",
+  "backlinks-plugin/docs/browser.md",
+  "backlinks-plugin/dist/configure.js",
+  "backlinks-plugin/dist/mcp/server.js",
+  "backlinks-plugin/runtime/playwright-core/package.json",
+  "backlinks-plugin/runtime/playwright-core/index.mjs",
+  "backlinks-plugin/skills/backlink-publish/SKILL.md",
+  "backlinks-plugin/skills/google-session/SKILL.md",
   // 仅校验 manifest 无法发现文档插件缺少技能正文或视觉评审 Agent。
 ] as const;
 

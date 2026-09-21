@@ -16,6 +16,7 @@ import { basename, dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { runCommand } from "../../../scripts/spawn-command.mjs";
+import { backlinksPluginPackage } from "../../../scripts/backlinks-plugin-assets.mjs";
 import { stageAgentBundle } from "./stage-agent-bundle.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -89,6 +90,7 @@ const browserUseRequiredRuntimePaths = [
   "skills/web-gui-tester/SKILL.md",
 ];
 const officialPluginPackages = [
+  backlinksPluginPackage,
   {
     // browser-use 只携带自己的 client script 与 skill/docs；node_repl MCP runtime 归
     // @zcode/node-repl-host（见上方常量注释）。
@@ -124,6 +126,7 @@ const includedOfficialPluginTopLevelPaths = new Set([
   "hooks",
   "output-styles",
   "package.json",
+  "runtime",
   "scripts",
   "skills",
   "templates",

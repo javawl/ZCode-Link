@@ -21,6 +21,7 @@ import {
   FolderOpen,
   Hash,
   ListFilter,
+  Link2,
   Maximize2,
   MessageCircleCheck,
   MessageCirclePlus,
@@ -1316,6 +1317,19 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 }
               />
             ) : null} */}
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setPendingSettingsSectionIntent("backlinks");
+                openSettingsTab();
+              }}
+              data-testid="backlinks-sidebar-open"
+              size="lg"
+              className="w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground"
+            >
+              <Link2 className="size-4" />
+              {intl.formatMessage({ id: "backlinks.title" })}
+            </Button>
             <Button
               variant="ghost"
               onClick={handleOpenAutomationsMain}

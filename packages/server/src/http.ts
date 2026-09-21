@@ -17,6 +17,7 @@ import {
 } from "@zcode/rpc";
 import {
   ServiceCollection,
+  IBacklinksService,
   IZCodeAgentService,
   createZCodeAgentConnectionScope,
   IFileService,
@@ -389,6 +390,10 @@ export function createHttpServer(
             .register(IGitService, connection.services.gitService)
             .register(ISystemService, connection.services.systemService)
             .register(ITerminalService, connection.services.terminalService);
+          // 与远端 Agent 使用同一外链配置；Web 桥接不能回退到本机数据目录。
+          if (connection.services.backlinksService) {
+            remoteServices.register(IBacklinksService, connection.services.backlinksService);
+          }
 
           setupChannelServer(ws.raw as WebSocket, remoteServices, "web-remote-replayable");
         },

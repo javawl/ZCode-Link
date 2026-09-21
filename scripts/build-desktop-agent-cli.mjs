@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stageAgentBundle } from "../packages/desktop/scripts/stage-agent-bundle.mjs";
 import { runCommand } from "./spawn-command.mjs";
+import { backlinksPluginPackage } from "./backlinks-plugin-assets.mjs";
 
 // adapters tsc 在内存受限机器上会 OOM（exit 134），给整条构建链路提高堆上限。
 process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ? process.env.NODE_OPTIONS + " " : ""}--max-old-space-size=8192`;
@@ -51,6 +52,13 @@ const cliWorkspaceBuilds = [
 // 独立 MCP runtime 必须集中登记，并在构建后验证真实入口文件，再允许 Agent bundle 启动。
 const requiredDevPluginRuntimeBuilds = [
   {
+    packageName: backlinksPluginPackage.packageName,
+    artifactPath: "backlinks-plugin/dist/mcp/server.js",
+    requiredArtifactPaths: backlinksPluginPackage.requiredRuntimePaths.map(
+      (path) => `backlinks-plugin/${path}`,
+    ),
+  },
+  {
     // node_repl 宿主：Browser Use 与 Computer Use 共用，产物归属独立包。
     packageName: "@zcode/node-repl-host",
     artifactPath: "node-repl-host/dist/mcp/server.js",
@@ -66,16 +74,18 @@ const defaultBuildFilters = [
   ...requiredDevPluginRuntimeBuilds.map(({ packageName }) => packageName),
 ];
 
-async function verifyRequiredDevPluginRuntimeArtifacts() {
-  for (const runtime of requiredDevPluginRuntimeBuilds) {
-    const artifactPath = resolve(repoRoot, "apps/zcode-cli/packages", runtime.artifactPath);
-    try {
-      await access(artifactPath);
-    } catch (error) {
-      throw new Error(
-        `[build-desktop-agent-cli] ${runtime.packageName} build succeeded without required MCP runtime: ${artifactPath}`,
-        { cause: error },
-      );
+async function verifyRequiredDevPluginRuntimeArtifacts(runtimes = requiredDevPluginRuntimeBuilds) {
+  for (const runtime of runtimes) {
+    for (const path of runtime.requiredArtifactPaths ?? [runtime.artifactPath]) {
+      const artifactPath = resolve(repoRoot, "apps/zcode-cli/packages", path);
+      try {
+        await access(artifactPath);
+      } catch (error) {
+        throw new Error(
+          `[build-desktop-agent-cli] ${runtime.packageName} build succeeded without required MCP runtime: ${artifactPath}`,
+          { cause: error },
+        );
+      }
     }
   }
 }
@@ -138,6 +148,18 @@ async function runBootstrapWithRemoteBuild() {
 
 if (useBootstrapWithRemoteBuild) {
   await runBootstrapWithRemoteBuild();
+  // bootstrap 可以复用已有 Agent bundle，但新增插件运行时仍须来自当前源码。
+  // 直接跑插件的同一 build 入口，避免复用 bundle 时漏掉外链技能和 Playwright 依赖。
+  runCommand(process.execPath, [backlinksPluginPackage.runtimeBuildScript], {
+    cwd: resolve(repoRoot, backlinksPluginPackage.relativePath),
+    env: pnpmRunEnv,
+    stdio: "inherit",
+  });
+  await verifyRequiredDevPluginRuntimeArtifacts(
+    requiredDevPluginRuntimeBuilds.filter(
+      ({ packageName }) => packageName === backlinksPluginPackage.packageName,
+    ),
+  );
   stageDevAgentBundle();
   process.exit(0);
 }
@@ -180,4 +202,5 @@ runCommand(
     stdio: "inherit",
   },
 );
+await verifyRequiredDevPluginRuntimeArtifacts();
 stageDevAgentBundle();

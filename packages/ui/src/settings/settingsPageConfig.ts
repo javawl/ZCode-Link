@@ -18,6 +18,7 @@ import {
   WandSparkles,
   Keyboard,
   FileSearch,
+  Link2,
 } from "lucide-react";
 import { isSettingsSectionEnabled, type SettingsSectionId } from "@/lib/settingsNavigation.js";
 import type { Theme } from "@/useTheme.js";
@@ -89,6 +90,12 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "plugin",
     icon: Blocks,
     titleId: "settings.plugins.title",
+    groupId: "agentCapabilities",
+  },
+  {
+    id: "backlinks",
+    icon: Link2,
+    titleId: "backlinks.title",
     groupId: "agentCapabilities",
   },
   {

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
+import { backlinksPluginPackage } from "../../../../../scripts/backlinks-plugin-assets.mjs";
 
 export const seaOfficialPluginAssetPrefix = "zcode-official-plugins/";
 export const seaOfficialPluginManifestAssetKey = `${seaOfficialPluginAssetPrefix}manifest.json`;
@@ -19,6 +20,16 @@ const browserUseRequiredRuntimePaths = [
 
 export const officialSeaPlugins = [
   {
+    marketplace: "zcode-plugins-official",
+    name: "backlinks",
+    packageName: backlinksPluginPackage.packageName,
+    requiresRuntime: true,
+    requiredRuntimePaths: backlinksPluginPackage.requiredRuntimePaths,
+    requiredSeedPaths: backlinksPluginPackage.requiredSeedPaths,
+    rootPath: join("packages", "backlinks-plugin"),
+    version: "0.1.0",
+  },
+  {
     // node_repl 宿主：Browser Use 与 Computer Use 共用的运行时产物，自己不是面向用户的插件
     // （无 skill、无市场 listing）。它必须始终随发布物嵌入，否则任一能力启用时都没有宿主可跑。
     marketplace: "zcode-plugins-official",
@@ -30,7 +41,6 @@ export const officialSeaPlugins = [
     version: "0.6.0",
   },
   {
-
     marketplace: "zcode-plugins-official",
     name: "browser-use",
     packageName: "@zcode/browser-use-plugin",
@@ -195,6 +205,7 @@ const includedTopLevelPaths = new Set([
   "hooks",
   "output-styles",
   "package.json",
+  "runtime",
   "scripts",
   "skills",
   "templates",

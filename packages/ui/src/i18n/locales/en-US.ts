@@ -1,5 +1,7 @@
+import { backlinksEn } from "./backlinks.js";
 /** English translations */
 const enUS: Record<string, string> = {
+  ...backlinksEn,
   "startPlan.recommendation.subagentDescription":
     "Your Start Plan has quota available for {model}. Switch this subagent’s model to the Start Plan?",
   "startPlan.recommendation.preferenceSaveFailed":

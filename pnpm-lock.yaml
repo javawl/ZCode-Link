@@ -207,6 +207,37 @@ importers:
         specifier: ^2.10.3
         version: 2.10.3
 
+  apps/zcode-cli/packages/backlinks-plugin:
+    dependencies:
+      '@modelcontextprotocol/server':
+        specifier: 2.0.0
+        version: 2.0.0
+      '@zcode/backlinks':
+        specifier: workspace:*
+        version: link:../../../../packages/backlinks
+      playwright-core:
+        specifier: 1.59.1
+        version: 1.59.1
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: 2.0.0
+        version: 2.0.0
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.12.2
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      tsx:
+        specifier: ^4.20.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   apps/zcode-cli/packages/bootstrap:
     dependencies:
       '@zcode/adapters':
@@ -606,6 +637,22 @@ importers:
 
   apps/zcode-cli/tools/typescript: {}
 
+  packages/backlinks:
+    dependencies:
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.6.0
+      tsx:
+        specifier: ^4.19.4
+        version: 4.21.0
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.2
+
   packages/client:
     dependencies:
       '@zcode/rpc':
@@ -950,6 +997,9 @@ importers:
 
   packages/services:
     dependencies:
+      '@zcode/backlinks':
+        specifier: workspace:*
+        version: link:../backlinks
       '@zcode/provider':
         specifier: workspace:*
         version: link:../provider
@@ -1217,6 +1267,9 @@ importers:
       '@tailwindcss/typography':
         specifier: ^0.5.19
         version: 0.5.19(tailwindcss@4.2.2)
+      '@tailwindcss/vite':
+        specifier: ^4.2.2
+        version: 4.2.2(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.9.0))
       '@tanstack/react-virtual':
         specifier: ^3.13.23
         version: 3.13.23(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -1229,6 +1282,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
+      playwright-core:
+        specifier: 1.59.1
+        version: 1.59.1
       tailwindcss:
         specifier: ^4.2.2
         version: 4.2.2
@@ -1238,6 +1294,9 @@ importers:
       unified:
         specifier: ^11.0.5
         version: 11.0.5
+      vite:
+        specifier: ^8.0.2
+        version: 8.0.8(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.9.0)
 
   packages/web:
     dependencies:

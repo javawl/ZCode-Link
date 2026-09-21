@@ -1,4 +1,5 @@
 import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE } from "@zcode/contracts";
+import { OFFICIAL_BACKLINKS_PLUGIN_DEFINITION } from "./official-backlinks-plugin-definition.js";
 
 // 内置插件的商店信息 seed（原样写入官方 marketplace.json 的条目 raw，键名与 CDN 目录
 // schema 一致：displayName_i18n / examplePrompts_i18n 等），解析复用 adapter 的
@@ -87,6 +88,7 @@ const OFFICIAL_ZCODE_GUIDE_REQUIRED_SEED_PATHS = [
 ] as const;
 
 export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = [
+  OFFICIAL_BACKLINKS_PLUGIN_DEFINITION,
   {
     // 无 listing：宿主不进市场、不对用户露出。它必须始终可用，因为 node_repl 的注册门禁
     // 是「Browser Use 或 Computer Use 任一启用」，宿主自己不参与那个判断。

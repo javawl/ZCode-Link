@@ -83,13 +83,16 @@
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
+    "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-virtual": "^3.13.23",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "playwright-core": "1.59.1",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
-    "unified": "^11.0.5"
+    "unified": "^11.0.5",
+    "vite": "^8.0.2"
   },
   "peerDependencies": {
     "@tanstack/react-virtual": "^3.13.23",

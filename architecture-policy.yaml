@@ -17,6 +17,15 @@ modules:
   - id: services
     roots: [packages/services/src]
     managed: false
+    requires: [backlinks]
+  - id: backlinks
+    roots: [packages/backlinks/src]
+    managed: true
+    requires: []
+    publicEntrypoints: [packages/backlinks/src/contract.ts, packages/backlinks/src/node.ts]
+    layers: { domain: domain, app: app, adapters: adapters }
+    layerOrder: [domain, app, adapters]
+    owner: backlinks
   - id: session
     roots: [packages/services/src/session]
     managed: false
@@ -55,6 +64,7 @@ modules:
   - id: zcode-cli
     roots: [apps/zcode-cli]
     managed: false
+    requires: [backlinks]
 
 global:
   maxFileLines: 400

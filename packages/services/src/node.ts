@@ -207,6 +207,8 @@ export { createFsVolumeProbe } from "./storage/adapters/volumeProbe.js";
 export { runStorageScan } from "./storage/adapters/inProcessScanRunner.js";
 export { createCodingPlanSubscriptionService } from "./coding-plan-subscription/codingPlanSubscriptionService.js";
 export { createClientConfigService } from "./client-config/clientConfigService.js";
+export { createBacklinksService } from "./backlinks/backlinksService.js";
+export type { CreateBacklinksServiceOptions } from "./backlinks/backlinksService.js";
 export { createClientScenesService } from "./client-scenes/clientScenesService.js";
 export { createSkillsService } from "./skills/skillsService.js";
 export { createSkillSyncService } from "./skill-sync/skillSyncService.js";
@@ -283,6 +285,8 @@ export {
 } from "./session/automationCron.js";
 
 import { ServiceCollection } from "./collection.js";
+import { IBacklinksService } from "./backlinks/contract.js";
+import { createBacklinksService } from "./backlinks/backlinksService.js";
 import { IFileService } from "./file/file.js";
 import { IMediaPreviewService } from "./media-preview/mediaPreview.js";
 import { IGitService } from "./git/git.js";
@@ -2420,6 +2424,7 @@ export function createLocalServices(options: {
   // services 集合建好后在 return 前统一登记进 sharedSqliteRepos 侧表
   const sqliteReposToClose: Array<{ close(): void }> = [];
   const services = new ServiceCollection()
+    .register(IBacklinksService, createBacklinksService())
     .register(IFileService, fileService)
     .register(IMediaPreviewService, mediaPreviewService)
     .register(IGitService, gitService)
