@@ -74,10 +74,14 @@ export async function executeBacklinksCommand(
       return { action, summary: `来源 ${command.sourceId} 已添加标签：${tags.join("、")}`, data };
     }
     case "mailbox_create": {
-      const domain = command.domain || (await runtime.getSettings()).mailboxDomain;
+      // 迁移后域名可留空，按后台声明解析，避免模型为补配置遍历无关文件。
+      const domain =
+        command.domain ||
+        (await runtime.getSettings()).mailboxDomain ||
+        (await runtime.getMailboxStatus(signal)).defaultDomain;
       if (!domain)
         throw new BacklinksError(
-          "请在外链设置中配置 mailboxDomain，或传入 domain。",
+          "Cloud Mail 未提供可用域名，请检查邮箱服务配置，或在连接与浏览器中填写验证邮箱域名。",
           "BACKLINKS_INVALID_REQUEST",
         );
       const data = await runtime.createMailbox({ localPart: command.localPart, domain }, signal);

@@ -537,10 +537,8 @@ function V4ComposerModelControlsImpl({
   // zai team plan 拿不到订阅产品，模型选择器里的 team 模型组建不出来。
   // 按 contextPlanConnection.family 让 hook 拉对应 family 的 team products。
   const enterpriseProducts = useEnterpriseCodingPlanProducts({
-    enabled:
-      !providerSourcesLoading &&
-      contextPlanConnection.kind === "teamCoding" &&
-      Boolean(contextAccountProviderAccess),
+    // 套餐商品不再属于客户端展示面。
+    enabled: false,
     authenticated: true,
     family: contextPlanConnection.kind === "teamCoding" ? contextPlanConnection.family : undefined,
   });

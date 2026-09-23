@@ -6,10 +6,11 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 import { createBacklinkBrowserRuntime } from "../src/browser/index.js";
 
-const executablePath = chromium.executablePath();
+const executablePath = process.env.ZCODE_BACKLINKS_TEST_BROWSER || chromium.executablePath();
 const request = { traceId: "trace-local-fixture", sessionId: "session-local-fixture" };
 
 test(
@@ -56,7 +57,11 @@ test(
       executablePath,
     };
     const browser = createBacklinkBrowserRuntime(options);
-    const reopened = createBacklinkBrowserRuntime(options);
+    const reopened = createBacklinkBrowserRuntime({
+      ...options,
+      profilePath: join(root, "unused"),
+      userDataDir: options.profilePath,
+    });
     try {
       await browser.execute(
         { action: "navigate", page: "publish", url: `${baseUrl}/seed` },
@@ -103,11 +108,20 @@ test(
         { action: "click", page: "publish", selector: "role:link|Continue with fixture" },
         request,
       );
-      const tabs = await browser.execute({ action: "tabs" }, request);
-      assert.equal(tabs.kind, "tabs");
-      if (tabs.kind !== "tabs") assert.fail("expected tabs");
-      const popup = tabs.tabs.find((tab) => tab.openerPage === "publish");
-      assert.ok(popup, "popup must retain its explicit source tab");
+      // 弹窗的 page 事件可能晚于 click 完成；有界等待实际标签页与来源关联。
+      const popupDeadline = Date.now() + 5_000;
+      let popup: { page: string } | undefined;
+      let observedTabs: unknown[] = [];
+      while (Date.now() < popupDeadline) {
+        const tabs = await browser.execute({ action: "tabs" }, request);
+        assert.equal(tabs.kind, "tabs");
+        if (tabs.kind !== "tabs") assert.fail("expected tabs");
+        observedTabs = tabs.tabs;
+        popup = tabs.tabs.find((tab) => tab.openerPage === "publish");
+        if (popup) break;
+        await delay(50);
+      }
+      assert.ok(popup, `popup must retain its explicit source tab: ${JSON.stringify(observedTabs)}`);
       await browser.execute(
         { action: "waitFor", page: popup.page, url: `${baseUrl}/oauth` },
         request,

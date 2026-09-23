@@ -1,6 +1,5 @@
-import { CodingPlanEntryButton } from "@/settings/CodingPlanEntryButton.js";
 import { useEffect, useRef } from "react";
-import { InfoIcon, RocketIcon, XIcon } from "lucide-react";
+import { InfoIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type {
@@ -46,8 +45,6 @@ function formatPercent(value: number | null): string {
 
 export function ConversationQuotaBanner({
   state,
-  upgradeActionLabelId = "chat.quota.action.upgrade",
-  onUpgrade,
   onDismiss,
   onShown,
 }: {
@@ -77,7 +74,8 @@ export function ConversationQuotaBanner({
       document.removeEventListener("visibilitychange", report);
     };
   }, [onShown, state.visible]);
-  if (!state.visible || !state.kind) return null;
+  // 低余额推广不再展示；实际受限/失败仍给出技术错误提示。
+  if (!state.visible || !state.kind || state.kind === "model-very-low") return null;
 
   const message =
     state.kind === "provider-limited" && state.providerLimitedMessage
@@ -110,17 +108,6 @@ export function ConversationQuotaBanner({
           <InfoIcon className="size-4 shrink-0" />
           <div className="min-w-0 break-words">{message}</div>
         </div>
-        {onUpgrade ? (
-          <CodingPlanEntryButton
-            type="button"
-            size="sm"
-            className="h-auto shrink-0 gap-1.5 rounded-full"
-            onClick={onUpgrade}
-          >
-            <RocketIcon className="size-3.5" />
-            {intl.formatMessage({ id: upgradeActionLabelId })}
-          </CodingPlanEntryButton>
-        ) : null}
         {state.dismissible ? (
           <Button
             type="button"

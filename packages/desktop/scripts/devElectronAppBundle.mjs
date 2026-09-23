@@ -2,8 +2,8 @@ import { access, cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promis
 import { dirname, join } from "node:path";
 
 export const DEV_ELECTRON_PROTOCOL_SCHEME = "zcode";
-export const DEV_ELECTRON_APP_NAME = "ZCode Dev";
-export const DEV_ELECTRON_APP_BUNDLE_ID = "dev.zcode.app.development";
+export const DEV_ELECTRON_APP_NAME = "LinkAgent Dev";
+export const DEV_ELECTRON_APP_BUNDLE_ID = "dev.linkagent.app.development";
 // 副本布局版本，见 prepareDevElectronAppBundle 中的指纹说明。
 export const DEV_ELECTRON_BUNDLE_FORMAT = 2;
 
@@ -45,6 +45,7 @@ export function patchDevElectronInfoPlist(plist) {
   let patched = replacePlistString(plist, "CFBundleDisplayName", DEV_ELECTRON_APP_NAME);
   patched = replacePlistString(patched, "CFBundleIdentifier", DEV_ELECTRON_APP_BUNDLE_ID);
   patched = replacePlistString(patched, "CFBundleName", DEV_ELECTRON_APP_NAME);
+  patched = replacePlistString(patched, "CFBundleIconFile", "linkagent.icns");
   return appendProtocolDeclaration(patched);
 }
 
@@ -111,6 +112,13 @@ export async function prepareDevElectronAppBundle({
     // 指纹最后写：中途失败时下次仍会判定为需要重拷，不会留下半成品缓存。
     if (sourceStamp !== undefined) await writeFile(sourceStampPath, sourceStamp, "utf8");
   }
+
+  // Dock 运行时图标与 Finder 中的开发应用图标均使用同一份生成资源。
+  await cp(
+    join(import.meta.dirname, "../build/icon.icns"),
+    join(appPath, "Contents/Resources/linkagent.icns"),
+  );
+  await writeFile(infoPlistPath, patchDevElectronInfoPlist(await readFile(infoPlistPath, "utf8")));
 
   return {
     appPath,

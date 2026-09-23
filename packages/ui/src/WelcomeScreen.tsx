@@ -447,6 +447,20 @@ function LoginPanel({ active, onComplete }: LoginPanelProps) {
           </div>
         )}
       </div>
+      <Button
+        variant="ghost"
+        className="w-full text-ui-base"
+        data-testid="login-back-to-workspace"
+        onClick={async () => {
+          finishActiveLoginEntryAttempt("cancelled");
+          clearLoginEntryRequest();
+          setOAuthError(null);
+          await cancel(pendingProvider ?? undefined);
+          await onComplete("skip");
+        }}
+      >
+        {intl.formatMessage({ id: "login.backToWorkspace" })}
+      </Button>
     </>
   );
 }
@@ -474,13 +488,12 @@ function LoginPanelHeader({
 
 function LoginPanelLogo() {
   return (
-    // 登录 logo 壳是固定深色底，边框不能跟随浅色主题 token，否则浅色主题下边框过重。
     <div
-      className="relative mb-1 flex size-16 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#000000_0%,#151718_100%)] text-[#ffffff] shadow-lg/20 before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:border before:border-[rgba(255,255,255,0.1)]"
-      aria-label="ZCode"
+      className="relative mb-1 flex size-16 items-center justify-center"
+      aria-label="LinkAgent"
       role="img"
     >
-      <ZCodeAboutLogo className="h-auto w-10" />
+      <ZCodeAboutLogo className="size-16" />
     </div>
   );
 }

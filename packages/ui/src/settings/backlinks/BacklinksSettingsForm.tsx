@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import type { BacklinksSettingsPatch, BacklinksSettingsSnapshot } from "@zcode/services";
 import { Input } from "@/components/ui/input.js";
 import { Button } from "@/components/ui/button.js";
@@ -15,6 +15,8 @@ function ProviderFields({
   clear,
   onClear,
   disabled,
+  tokenHelp,
+  children,
 }: {
   name: string;
   baseUrl: string;
@@ -25,6 +27,8 @@ function ProviderFields({
   clear: boolean;
   onClear(value: boolean): void;
   disabled: boolean;
+  tokenHelp?: string;
+  children?: ReactNode;
 }) {
   const { intl } = useZCodeIntl();
   const id = useId();
@@ -53,6 +57,7 @@ function ProviderFields({
           placeholder={t(configured ? "tokenConfigured" : "tokenMissing")}
         />
       </label>
+      {tokenHelp ? <p className="text-ui-sm text-foreground-subtle">{tokenHelp}</p> : null}
       <div className="flex items-center gap-2 text-ui-sm">
         <Checkbox
           id={id}
@@ -62,6 +67,7 @@ function ProviderFields({
         />
         <label htmlFor={id}>{t("clearToken")}</label>
       </div>
+      {children}
     </fieldset>
   );
 }
@@ -126,6 +132,8 @@ export function BacklinksSettingsForm({
           headless: browser.headless,
           channel: browser.channel,
           executablePath: browser.executablePath,
+          userDataDir: browser.userDataDir ?? "",
+          cdpEndpoint: browser.cdpEndpoint ?? "",
         },
       });
       setSaved(true);
@@ -146,6 +154,7 @@ export function BacklinksSettingsForm({
       <div className="grid gap-4 xl:grid-cols-2">
         <ProviderFields
           name={t("supermanager")}
+          tokenHelp={t("agentTokenHelp")}
           baseUrl={supermanagerUrl}
           onBaseUrl={setSupermanagerUrl}
           token={supermanagerToken}
@@ -165,20 +174,44 @@ export function BacklinksSettingsForm({
           clear={clearCloudMail}
           onClear={setClearCloudMail}
           disabled={saving}
-        />
+        >
+          <label className="block space-y-1 text-ui-sm">
+            <span>{t("mailboxDomain")}</span>
+            <Input
+              value={mailboxDomain}
+              onChange={(event) => setMailboxDomain(event.target.value)}
+              disabled={saving}
+              placeholder={t("mailboxDomainAuto")}
+              autoComplete="off"
+            />
+          </label>
+          <p className="text-ui-sm text-foreground-subtle">{t("mailboxDomainHelp")}</p>
+        </ProviderFields>
       </div>
-      <label className="block space-y-1 text-ui-sm">
-        <span>{t("mailboxDomain")}</span>
-        <Input
-          value={mailboxDomain}
-          onChange={(event) => setMailboxDomain(event.target.value)}
-          disabled={saving}
-          placeholder="mail.example.com"
-          autoComplete="off"
-        />
-      </label>
       <fieldset disabled={saving} className="space-y-3 rounded-xl border border-border p-4">
         <legend className="px-1 text-ui-base font-medium">{t("browser")}</legend>
+        <label className="block space-y-1 text-ui-sm">
+          <span>{t("userDataDir")}</span>
+          <Input
+            value={browser.userDataDir ?? ""}
+            autoComplete="off"
+            onChange={(event) =>
+              setBrowser({ ...browser, userDataDir: event.target.value, cdpEndpoint: "" })
+            }
+          />
+        </label>
+        <label className="block space-y-1 text-ui-sm">
+          <span>{t("cdpEndpoint")}</span>
+          <Input
+            value={browser.cdpEndpoint ?? ""}
+            placeholder="http://127.0.0.1:9222"
+            autoComplete="off"
+            onChange={(event) =>
+              setBrowser({ ...browser, cdpEndpoint: event.target.value, userDataDir: "" })
+            }
+          />
+        </label>
+        <p className="text-ui-sm text-foreground-subtle">{t("browserReuseHelp")}</p>
         <div className="grid gap-3 xl:grid-cols-2">
           <label className="block space-y-1 text-ui-sm">
             <span>{t("channel")}</span>

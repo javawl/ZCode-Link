@@ -34,12 +34,15 @@ async function appendOnboardingRecord(
 
 export function OccupationOnboarding({
   children,
+  autoOpen = true,
   showWindowControls = false,
   showChildrenWhileLoading = false,
   isMacDesktop,
   isWindowsDesktop,
 }: {
   children: ReactNode;
+  /** LinkAgent 首次启动直接进入工作区，仍允许用户在设置中主动打开偏好引导。 */
+  autoOpen?: boolean;
   /** Windows/Linux 自绘窗控：引导全屏覆盖主界面（含标题栏），需在此补最小化/最大化/关闭。 */
   showWindowControls?: boolean;
   /** 独立设置页不依赖引导设置加载，避免应用级引导外层遮住设置内容。 */
@@ -79,7 +82,7 @@ export function OccupationOnboarding({
     hasStoredOccupation: Boolean(settings?.onboardingOccupation),
     update,
   });
-  const onboardingVisible = requested || (needsOnboarding === true && !dismissed);
+  const onboardingVisible = requested || (autoOpen && needsOnboarding === true && !dismissed);
   const captureEnd = useOnboardingTelemetry({
     platform,
     visible:
@@ -205,6 +208,7 @@ export function OccupationOnboarding({
     applyLatestEntry();
     // eslint-disable-line react-hooks/exhaustive-deps
   }, [latestEntry]);
+  if (!autoOpen && !requested) return <>{children}</>;
   if (!settings) return showChildrenWhileLoading ? <>{children}</> : null;
   // 判定进行中先不渲染，避免引导闪现后立即消失（判定为需引导）或先闪引导再进主界面。
   // 只有疑似首跑（settings 里也没有职业）才等待记录判定；存量用户（已有

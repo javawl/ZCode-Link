@@ -46,12 +46,20 @@ export async function requestJson(
       signal: combined,
       redirect: "error",
     });
-    if (!response.ok)
+    if (!response.ok) {
+      // 401/403 表示服务拒绝当前凭据，不能误报为列表不存在，也不能回显响应正文中的秘密。
+      const authenticationHint =
+        response.status === 401 || response.status === 403
+          ? provider === "supermanager"
+            ? " Agent Token 被拒绝，请在「连接与浏览器」中更新 Supermanager Agent Token（不是模型 API Key）。"
+            : " 访问令牌被拒绝，请在「连接与浏览器」中更新 Cloud Mail 令牌。"
+          : "";
       throw new BacklinksError(
-        `${provider} ${path} 返回 HTTP ${response.status}。`,
+        `${provider} ${path} 返回 HTTP ${response.status}。${authenticationHint}`,
         httpErrorCode(response.status),
         retryAfter(response.headers.get("retry-after")),
       );
+    }
     const text = await response.text();
     if (!text.trim()) return {};
     try {
@@ -75,11 +83,39 @@ export async function requestJson(
 }
 
 export function parseResponse<T>(
-  schema: { safeParse(value: unknown): { success: true; data: T } | { success: false } },
+  schema: {
+    safeParse(
+      value: unknown,
+    ):
+      | { success: true; data: T }
+      | { success: false; error?: { issues?: readonly { path?: readonly PropertyKey[] }[] } };
+  },
   value: unknown,
 ): T {
   const parsed = schema.safeParse(value);
-  if (!parsed.success)
-    throw new BacklinksError("外链后台响应字段与 API 契约不一致。", "BACKLINKS_API_ERROR");
+  if (!parsed.success) {
+    // 只给出有限 schema 路径，不拼接 Zod message 或响应值，避免模型/日志获得后台敏感内容。
+    const fields = [
+      ...new Set(
+        (parsed.error?.issues ?? []).map((issue) =>
+          (
+            issue.path
+              ?.map((part) =>
+                typeof part === "number"
+                  ? String(part)
+                  : typeof part === "string" && /^[A-Za-z_][\w-]{0,63}$/.test(part)
+                    ? part
+                    : "?",
+              )
+              .join(".") || "<root>"
+          ).slice(0, 160),
+        ),
+      ),
+    ].slice(0, 5);
+    throw new BacklinksError(
+      `外链后台响应字段与 API 契约不一致${fields.length ? `（字段：${fields.join("、")}）` : ""}。`,
+      "BACKLINKS_API_ERROR",
+    );
+  }
   return parsed.data;
 }

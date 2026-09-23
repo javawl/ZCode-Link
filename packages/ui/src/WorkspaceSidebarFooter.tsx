@@ -44,11 +44,7 @@ import { useShortcutCommandLabel } from "@/shortcuts/useShortcutBindings.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { normalizeInterfaceMode } from "@/lib/interfaceMode.js";
 import type { Theme } from "@/useTheme.js";
-import {
-  WorkspaceSidebarFooterPlanBadge,
-  WorkspaceSidebarFooterUsageSummaryContent,
-  useWorkspaceSidebarFooterUsageSummaryState,
-} from "@/WorkspaceSidebarFooterUsageSummary.js";
+import type { WorkspaceSidebarFooterUsageSummaryContent } from "@/WorkspaceSidebarFooterUsageSummary.js";
 
 const DESKTOP_ZOOM_MIN_LEVEL = -3;
 const DESKTOP_ZOOM_MAX_LEVEL = 5;
@@ -64,7 +60,7 @@ function getSidebarProfileName(user?: UserInfo | null): string {
     return username;
   }
 
-  return "ZCode";
+  return "LinkAgent";
 }
 
 function getSidebarProfileBadge(
@@ -79,8 +75,8 @@ function getSidebarProfileBadge(
 }
 
 function getAvatarFallbackText(user: UserInfo | null | undefined): string {
-  const source = user?.displayName?.trim() || user?.username?.trim() || "Z";
-  return source[0]?.toUpperCase() ?? "Z";
+  const source = user?.displayName?.trim() || user?.username?.trim() || "L";
+  return source[0]?.toUpperCase() ?? "L";
 }
 
 export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterComponent({
@@ -90,15 +86,10 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   onThemeChange,
   onSettingsButtonClick,
   onUsageClick,
-  onUpgradeClick,
   onLogin,
   onLogout,
   settingsButtonMode = "settings",
   user,
-  workspacePath,
-  workspaceIdentity,
-  workspaceRemoteSessionId,
-  activeTaskId,
   isDesktop = false,
   className,
 }: {
@@ -134,11 +125,6 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   const avatarFallbackText = getAvatarFallbackText(user);
   const avatarKey = user?.avatarUrl ?? user?.id ?? "guest";
   const showAuthRestoreLoading = !user && isRestoringOAuthSession;
-  const usageSummaryState = useWorkspaceSidebarFooterUsageSummaryState({
-    enabled: true,
-    workspaceIdentity,
-    workspacePath,
-  });
   const profileContent = (
     <>
       <Avatar key={avatarKey} size="default">
@@ -164,7 +150,6 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
           <span className="min-w-0 truncate text-ui-base font-semibold text-foreground">
             {profileBadge}
           </span>
-          {user ? <WorkspaceSidebarFooterPlanBadge state={usageSummaryState} /> : null}
         </div>
       </div>
     </>
@@ -342,12 +327,10 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             ) : null}
-            {/* 升级入口状态不再以菜单开关为生命周期边界。*/}
-            <WorkspaceSidebarFooterUsageSummaryContent
-              state={usageSummaryState}
-              onUsageClick={usageButtonClick}
-              onUpgradeClick={onUpgradeClick}
-            />
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={usageButtonClick} data-testid="sidebar-local-usage-button">
+              {intl.formatMessage({ id: "sidebar.usage.plan.openStats" })}
+            </DropdownMenuItem>
             {onLogin && !user ? (
               <>
                 <DropdownMenuSeparator />

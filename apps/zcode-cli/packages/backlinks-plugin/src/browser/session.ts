@@ -20,6 +20,8 @@ export class BacklinkBrowserSession {
   readonly #releaseProfile: () => Promise<void>;
   readonly #pages = new Map<string, Page>();
   readonly #references = new WeakMap<Page, string>();
+  readonly #owned = new Set<Page>();
+  readonly #disconnect?: () => Promise<void>;
   #closed = false;
   #closePromise?: Promise<void>;
 
@@ -28,11 +30,13 @@ export class BacklinkBrowserSession {
     timeoutMs: number,
     workspacePath: string,
     releaseProfile: () => Promise<void>,
+    disconnect?: () => Promise<void>,
   ) {
     this.#context = context;
     this.#timeoutMs = timeoutMs;
     this.#workspacePath = workspacePath;
     this.#releaseProfile = releaseProfile;
+    this.#disconnect = disconnect;
     context.on("close", () => {
       this.#closed = true;
     });
@@ -49,12 +53,14 @@ export class BacklinkBrowserSession {
     return await Promise.all(
       pages.map(async (page) => {
         const opener = await page.opener();
+        if (opener && this.#owned.has(opener)) this.#owned.add(page);
         const openerPage = opener ? this.#references.get(opener) : undefined;
         return {
           page: this.#references.get(page)!,
           url: page.url(),
           title: await page.title(),
           ...(openerPage ? { openerPage } : {}),
+          ...(this.#disconnect ? { owned: this.#owned.has(page) } : {}),
         };
       }),
     );
@@ -69,12 +75,22 @@ export class BacklinkBrowserSession {
     let page = this.#pages.get(command.page);
     if (command.action === "navigate" && (!page || page.isClosed())) {
       page = await this.#context.newPage();
+      this.#owned.add(page);
       this.adopt(page, command.page);
     }
     if (!page || page.isClosed())
       throw new BacklinkBrowserError(
         "BROWSER_PAGE_NOT_FOUND",
         "The named browser page is not open. Observe tabs or navigate with a new page reference",
+      );
+    if (
+      this.#disconnect &&
+      !this.#owned.has(page) &&
+      !["snapshot", "screenshot", "bringToFront", "waitFor"].includes(command.action)
+    )
+      throw new BacklinkBrowserError(
+        "BROWSER_INVALID_INPUT",
+        "This existing tab belongs to the user. Navigate with a new page reference to reuse its login safely",
       );
     switch (command.action) {
       case "navigate":
@@ -147,10 +163,21 @@ export class BacklinkBrowserSession {
 
   async close(): Promise<void> {
     this.#closePromise ??= (async () => {
-      if (!this.#closed) await this.#context.close();
-      this.#closed = true;
-      this.#pages.clear();
-      await this.#releaseProfile();
+      try {
+        // 外部默认 context 承载用户登录态；CDP close 仅断开此连接，不关闭浏览器。
+        if (this.#disconnect) {
+          if (!this.#closed) await this.tabs();
+          await Promise.allSettled(
+            [...this.#owned].filter((page) => !page.isClosed()).map((page) => page.close()),
+          );
+          await this.#disconnect();
+        } else if (!this.#closed) await this.#context.close();
+      } finally {
+        this.#closed = true;
+        this.#pages.clear();
+        this.#owned.clear();
+        await this.#releaseProfile();
+      }
     })();
     await this.#closePromise;
   }

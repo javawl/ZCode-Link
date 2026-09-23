@@ -55,14 +55,55 @@ const windowPosition = z
     (value) => value.split(",").every((part) => Number.isSafeInteger(Number(part))),
     "窗口位置必须为两个安全整数",
   );
-const browser = z.strictObject({
-  headless: z.boolean().optional(),
-  channel: z.string().trim().max(100).optional(),
-  executablePath: z.string().trim().optional(),
-  launchArgs: launchArguments.optional(),
-  ignoreDefaultArgs: launchArguments.optional(),
-  windowPosition: windowPosition.optional(),
-});
+export const browserCdpEndpointSchema = z
+  .string()
+  .trim()
+  .refine((value) => {
+    if (!value) return true;
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === "http:" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash &&
+        url.pathname === "/"
+      );
+    } catch {
+      return false;
+    }
+  }, "请输入本地 HTTP 调试地址，例如 http://127.0.0.1:9222")
+  .transform((value) => {
+    if (!value) return "";
+    const url = new URL(value);
+    if (url.hostname === "localhost") url.hostname = "127.0.0.1";
+    return url.origin;
+  });
+const browser = z
+  .strictObject({
+    cdpEndpoint: browserCdpEndpointSchema.optional(),
+    userDataDir: z
+      .string()
+      .trim()
+      .max(4096)
+      .refine(
+        (value) => !value || (!value.includes("\0") && /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)),
+        "请输入已有独立浏览器目录的绝对路径",
+      )
+      .optional(),
+    headless: z.boolean().optional(),
+    channel: z.string().trim().max(100).optional(),
+    executablePath: z.string().trim().optional(),
+    launchArgs: launchArguments.optional(),
+    ignoreDefaultArgs: launchArguments.optional(),
+    windowPosition: windowPosition.optional(),
+  })
+  .refine(
+    (value) => !(value.cdpEndpoint && value.userDataDir),
+    "已有浏览器目录和 CDP 地址只能选择一项",
+  );
 export const settingsFileSchema = z.strictObject({
   version: z.literal(1),
   supermanager: provider.optional(),
@@ -90,6 +131,8 @@ export interface BacklinksSettingsSnapshot {
   readonly cloudMail: { readonly baseUrl: string; readonly tokenConfigured: boolean };
   readonly mailboxDomain: string;
   readonly browser: {
+    readonly cdpEndpoint?: string;
+    readonly userDataDir?: string;
     readonly headless: boolean;
     readonly channel: string;
     readonly executablePath: string;

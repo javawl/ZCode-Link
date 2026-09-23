@@ -13,6 +13,8 @@ export function useBacklinksService(options: {
   workspaceIdentity?: string;
   isDesktop: boolean;
   onPublished?: () => void;
+  /** 设置页只读取配置，不创建后台批次轮询。 */
+  pollBatches?: boolean;
 }) {
   const target = useWorkspaceServicesResolution(
     options.workspacePath,
@@ -104,18 +106,19 @@ export function useBacklinksService(options: {
         },
       );
     }
-    void store?.getState().refresh();
-    const timer = store
-      ? setInterval(() => {
-          void store.getState().refresh();
-        }, REFRESH_INTERVAL_MS)
-      : undefined;
+    if (options.pollBatches !== false) void store?.getState().refresh();
+    const timer =
+      store && options.pollBatches !== false
+        ? setInterval(() => {
+            void store.getState().refresh();
+          }, REFRESH_INTERVAL_MS)
+        : undefined;
     return () => {
       mounted.current = false;
       generation.current += 1;
       if (timer) clearInterval(timer);
     };
-  }, [service, store]);
+  }, [service, store, options.pollBatches]);
 
   const saveSettings = useCallback(
     async (patch: BacklinksSettingsPatch): Promise<void> => {
@@ -127,7 +130,7 @@ export function useBacklinksService(options: {
         const snapshot = await service.updateSettings(patch);
         if (version !== generation.current) return;
         setSettings(snapshot);
-        await store?.getState().refresh();
+        if (options.pollBatches !== false) await store?.getState().refresh();
       } catch (error) {
         if (version === generation.current)
           setSettingsError(error instanceof Error ? error.message : String(error));
@@ -136,7 +139,7 @@ export function useBacklinksService(options: {
         if (version === generation.current) setSaving(false);
       }
     },
-    [service, store],
+    [service, store, options.pollBatches],
   );
 
   return { store, settings, settingsError, saving, saveSettings, connecting: !target.rpcReady };

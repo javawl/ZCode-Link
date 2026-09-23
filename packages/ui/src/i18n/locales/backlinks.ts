@@ -1,4 +1,14 @@
 export const backlinksEn: Record<string, string> = {
+  "backlinks.sidebarTab": "Batches",
+  "backlinks.selectVisibleShort": "Select visible",
+  "backlinks.publishShort": "Publish",
+  "backlinks.pendingShort": "To do",
+  "backlinks.executedShort": "Done",
+  "backlinks.failedShort": "Failed",
+  "backlinks.settingsDescription":
+    "Browse and publish batches from the Publish batches tab next to Projects in the sidebar.",
+  "backlinks.agentTokenHelp":
+    "Use the Supermanager Agent Token, not a model API key. Paste the token only, without the Bearer prefix.",
   "backlinks.title": "Backlink publishing",
   "backlinks.description":
     "Review publish batches, configure providers, and run selected batches in a new Agent task.",
@@ -37,6 +47,13 @@ export const backlinksEn: Record<string, string> = {
   "backlinks.tokenMissing": "Not configured",
   "backlinks.clearToken": "Remove saved token",
   "backlinks.mailboxDomain": "Verification mailbox domain",
+  "backlinks.mailboxDomainAuto": "Automatic — discover from Cloud Mail",
+  "backlinks.mailboxDomainHelp":
+    "Optional. Leave blank to use the first domain returned by Cloud Mail. The API hostname is not necessarily a mailbox domain. Domain discovery does not create a mailbox or verify delivery.",
+  "backlinks.userDataDir": "Reuse an existing dedicated browser profile (absolute path)",
+  "backlinks.cdpEndpoint": "Connect to an open browser (local CDP URL)",
+  "backlinks.browserReuseHelp":
+    "Choose one reuse option, or leave both blank for a separate workspace browser. A profile preserves its accounts and must be closed before use here. CDP reuses an open browser's logins in new tabs; existing tabs and the browser stay open on disconnect. Avoid controlling the same browser from both apps. Changes apply to the next browser session.",
   "backlinks.browser": "Publishing browser",
   "backlinks.channel": "Browser channel",
   "backlinks.executable": "Browser executable path (optional)",
@@ -45,12 +62,22 @@ export const backlinksEn: Record<string, string> = {
     "Use a visible browser for the first Google sign-in or any manual verification.",
   "backlinks.save": "Save settings",
   "backlinks.saving": "Saving…",
-  "backlinks.saved": "Settings saved. New operations use this configuration immediately.",
+  "backlinks.saved":
+    "Settings saved. API changes apply immediately; browser changes apply to the next browser session.",
   "backlinks.configurationHelp":
-    "Configure both APIs and the mailbox domain before publishing. Tokens are stored by this host and are never returned to this page.",
+    "Configure your APIs here. Mailbox domains can be discovered automatically; sites already signed in may not need a mailbox. Saved tokens are never returned to this page.",
 };
 
 export const backlinksZh: Record<string, string> = {
+  "backlinks.sidebarTab": "发布批次",
+  "backlinks.selectVisibleShort": "全选当前列表",
+  "backlinks.publishShort": "发布",
+  "backlinks.pendingShort": "待",
+  "backlinks.executedShort": "成",
+  "backlinks.failedShort": "败",
+  "backlinks.settingsDescription": "请在侧栏「项目」旁的「发布批次」中查看与发布批次。",
+  "backlinks.agentTokenHelp":
+    "请使用 Supermanager 的 Agent Token，不是模型 API Key；只粘贴令牌，无需 Bearer 前缀。",
   "backlinks.title": "外链发布",
   "backlinks.description": "查看发布批次、配置服务，并在新建的 Agent 任务中执行选定批次。",
   "backlinks.batches": "发布批次",
@@ -86,6 +113,13 @@ export const backlinksZh: Record<string, string> = {
   "backlinks.tokenMissing": "尚未配置",
   "backlinks.clearToken": "删除已保存的令牌",
   "backlinks.mailboxDomain": "验证邮箱域名",
+  "backlinks.mailboxDomainAuto": "留空：从 Cloud Mail 自动获取",
+  "backlinks.mailboxDomainHelp":
+    "可选。留空时使用 Cloud Mail 返回的首个域名。API 主机名不一定是收件域名；自动查询不会创建邮箱，也不代表已验证收信。",
+  "backlinks.userDataDir": "复用已有独立浏览器目录（绝对路径）",
+  "backlinks.cdpEndpoint": "连接已打开的浏览器（本地 CDP 地址）",
+  "backlinks.browserReuseHelp":
+    "两项任选其一，都留空则按工作区使用独立浏览器。目录复用保留原有账号，使用前需关闭占用该目录的浏览器；CDP 在新标签页共享已打开浏览器的登录态，断开时保留原有页面和浏览器。避免两套应用同时操作同一浏览器。修改在下次浏览器会话生效。",
   "backlinks.browser": "发布专用浏览器",
   "backlinks.channel": "浏览器通道",
   "backlinks.executable": "浏览器可执行文件路径（可选）",
@@ -93,7 +127,7 @@ export const backlinksZh: Record<string, string> = {
   "backlinks.headlessHelp": "首次 Google 登录或需要人工验证时，请使用有窗口模式。",
   "backlinks.save": "保存设置",
   "backlinks.saving": "保存中…",
-  "backlinks.saved": "设置已保存，后续操作立即使用新配置。",
+  "backlinks.saved": "设置已保存。API 配置立即生效，浏览器配置在下次浏览器会话生效。",
   "backlinks.configurationHelp":
-    "发布前请配置两个 API 和验证邮箱域名。令牌保存在当前宿主，本页面不会读取或显示已保存的令牌。",
+    "在此配置 API。验证邮箱域名可自动获取，已登录的站点可能无需邮箱。令牌保存在当前宿主，本页面不会读取或显示已保存的令牌。",
 };

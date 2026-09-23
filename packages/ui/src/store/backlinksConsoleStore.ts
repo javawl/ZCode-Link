@@ -58,7 +58,10 @@ export function createBacklinksConsoleStore(
       const version = ++refreshVersion;
       set({ loading: true });
       try {
-        const batches = [...(await reader.listBatches())].sort((a, b) => b.id - a.id);
+        // 后台 executing 是唯一执行事实；先置顶运行批次，结束后随刷新回到原数字排序。
+        const batches = [...(await reader.listBatches())].sort(
+          (a, b) => Number(b.executing) - Number(a.executing) || b.id - a.id,
+        );
         if (version !== refreshVersion) return;
         const known = new Set(batches.map((batch) => batch.id));
         set((state) => ({

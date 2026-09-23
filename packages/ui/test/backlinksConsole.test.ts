@@ -28,6 +28,46 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+test("executing batches stay above newer idle batches and return to numeric order when finished", async () => {
+  let batches = [
+    batch(389),
+    { ...batch(99), executing: true },
+    batch(100),
+    { ...batch(1), executing: true },
+  ];
+  const store = createBacklinksConsoleStore(
+    {
+      listBatches: async () => batches,
+      getBatch: async () => {
+        throw new Error("not requested");
+      },
+    },
+    async () => {},
+  );
+  await store.getState().refresh();
+  assert.deepEqual(
+    store.getState().batches.map((b) => b.id),
+    [99, 1, 389, 100],
+  );
+  assert.deepEqual(
+    batches.map((b) => b.id),
+    [389, 99, 100, 1],
+    "sorting must not mutate the backend array",
+  );
+  store.getState().select([99], true);
+  assert.deepEqual(
+    filterBacklinkBatches(store.getState().batches, "9").map((b) => b.id),
+    [99, 389],
+  );
+  batches = batches.map((b) => ({ ...b, executing: b.id === 100 }));
+  await store.getState().refresh();
+  assert.deepEqual(
+    store.getState().batches.map((b) => b.id),
+    [100, 389, 99, 1],
+  );
+  assert.deepEqual(store.getState().selectedIds, [99]);
+});
+
 test("console numeric sorting, filtered selection and refresh preserve hidden selections", async () => {
   let batches = [batch(99), batch(389, "tools.example"), batch(100)];
   const store = createBacklinksConsoleStore(
@@ -168,6 +208,7 @@ test("publisher creates a new task, uses its trace and routes input to the same 
   assert.deepEqual(calls[0]?.value, {
     workspacePath: "/remote/project",
     workspaceIdentity: "remote:test",
+    deferPersistenceUntilFirstPrompt: true,
   });
   assert.deepEqual(calls[1]?.value, {
     taskId: "new-task",

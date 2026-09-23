@@ -7,6 +7,68 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createBacklinksRuntime } from "../src/node.js";
 
+test("browser reuse settings accept a dedicated profile or local CDP and reject ambiguous targets", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "backlinks-browser-config-"));
+  try {
+    const runtime = createBacklinksRuntime({ dataBaseDir: dir, env: {} });
+    const saved = await runtime.updateSettings({
+      browser: { cdpEndpoint: "http://localhost:9222/", userDataDir: "" },
+    });
+    assert.equal(saved.browser.cdpEndpoint, "http://127.0.0.1:9222");
+    for (const cdpEndpoint of [
+      "https://remote.test",
+      "http://127.0.0.1:9222/path",
+      "http://user:secret@127.0.0.1:9222",
+      "http://127.0.0.1:9222?key=secret",
+    ])
+      await assert.rejects(runtime.updateSettings({ browser: { cdpEndpoint } }));
+    await assert.rejects(
+      runtime.updateSettings({ browser: { userDataDir: join(dir, "profile") } }),
+    );
+    assert.equal((await runtime.getSettings()).browser.userDataDir || "", "");
+    const profile = await runtime.updateSettings({
+      browser: { cdpEndpoint: "", userDataDir: join(dir, "profile") },
+    });
+    assert.equal(profile.browser.userDataDir, join(dir, "profile"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("correcting an unauthorized Agent Token recovers the same runtime without exposing credentials", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "backlinks-auth-"));
+  const requests: string[] = [];
+  try {
+    const runtime = createBacklinksRuntime({
+      dataBaseDir: dir,
+      env: {},
+      fetch: async (_url, init) => {
+        const authorization = new Headers(init?.headers).get("authorization") ?? "";
+        requests.push(init?.method ?? "GET");
+        return authorization === "Bearer valid-agent-token"
+          ? Response.json({ batches: [] })
+          : Response.json({ error: "Unauthorized" }, { status: 401 });
+      },
+    });
+    await runtime.updateSettings({
+      supermanager: { baseUrl: "https://batches.test", token: "wrong-agent-token" },
+    });
+    await assert.rejects(runtime.listBatches(), (error: unknown) => {
+      assert.equal((error as { code: string }).code, "BACKLINKS_UNAUTHORIZED");
+      assert.match((error as Error).message, /Agent Token/);
+      assert.doesNotMatch((error as Error).message, /wrong-agent-token/);
+      return true;
+    });
+    assert.deepEqual(requests, ["GET"], "authentication failure must not be retried");
+    await runtime.updateSettings({ supermanager: { token: "valid-agent-token" } });
+    assert.deepEqual(await runtime.listBatches(), []);
+    assert.doesNotMatch(JSON.stringify(await runtime.getSettings()), /valid-agent-token/);
+    assert.deepEqual(requests, ["GET", "GET"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("settings are shared, atomic, secret-redacted, hot-reloaded and preserve blank tokens", async () => {
   const dir = await mkdtemp(join(tmpdir(), "backlinks-config-"));
   try {

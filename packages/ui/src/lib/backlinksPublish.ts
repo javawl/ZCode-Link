@@ -33,6 +33,9 @@ export function createBacklinksPublisher(options: {
       await options.prepare?.();
       const task = await options.taskService.createTask({
         workspacePath: options.workspacePath,
+        // 批次发布先建空会话再首发；必须交给 V4 admission 先落 session 主记录，
+        // 否则 sendText 写 session_input 外键账本时会因父记录不存在而失败。
+        deferPersistenceUntilFirstPrompt: true,
         ...(options.workspaceIdentity ? { workspaceIdentity: options.workspaceIdentity } : {}),
         ...(options.modelSelection ? { modelSelection: options.modelSelection } : {}),
       });

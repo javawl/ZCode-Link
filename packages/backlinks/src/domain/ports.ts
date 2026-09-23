@@ -60,7 +60,19 @@ export interface ProviderIdentity {
   available(): boolean;
 }
 export interface BacklinkBatchSourceProvider extends ProviderIdentity, BacklinkBatchOperations {}
-export interface MailboxProvider extends ProviderIdentity, MailboxOperations {}
+export interface MailboxProvider extends ProviderIdentity, MailboxOperations {
+  listDomains?(signal?: AbortSignal): Promise<readonly string[]>;
+}
+export interface MailboxStatus {
+  readonly configured: boolean;
+  readonly defaultDomain: string;
+  readonly domains: readonly string[];
+  readonly domainSource: "configured" | "discovered" | "unavailable";
+  readonly discoveryError?: string;
+}
+export interface MailboxStatusPort {
+  getMailboxStatus(signal?: AbortSignal): Promise<MailboxStatus>;
+}
 export interface BacklinksSettingsPort {
   getSettings(): Promise<BacklinksSettingsSnapshot>;
   updateSettings(input: BacklinksSettingsPatch): Promise<BacklinksSettingsSnapshot>;
@@ -74,6 +86,7 @@ export interface BacklinksLifecyclePort {
 }
 export type BacklinksRuntime = BacklinkBatchOperations &
   MailboxOperations &
+  MailboxStatusPort &
   BacklinksSettingsPort &
   BacklinksRegistrationPort &
   BacklinksLifecyclePort;

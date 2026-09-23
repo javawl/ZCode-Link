@@ -232,7 +232,18 @@ function resolveAutomaticCompletedAt(entry: CodingPlanQuotaResetUiEntry | null):
     : null;
 }
 
-export function ChatContextUsage({
+/** LinkAgent 只展示技术上下文统计；存量调用传来的余额/套餐属性不再进入展示和刷新链路。 */
+export function ChatContextUsage(props: Parameters<typeof ContextUsageContent>[0]) {
+  return (
+    <ContextUsageContent
+      {...props}
+      codingPlanUsageRemaining={undefined}
+      startPlanBalance={undefined}
+    />
+  );
+}
+
+function ContextUsageContent({
   codingPlanUsageRemaining,
   startPlanBalance,
   taskUsage,

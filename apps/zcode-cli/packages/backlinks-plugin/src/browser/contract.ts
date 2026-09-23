@@ -80,6 +80,7 @@ export interface BacklinkBrowserTab {
   url: string;
   title: string;
   openerPage?: string;
+  owned?: boolean;
 }
 
 export type BacklinkBrowserResult =

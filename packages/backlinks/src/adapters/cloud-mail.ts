@@ -51,6 +51,34 @@ export class CloudMailMailbox implements MailboxProvider {
   available(): boolean {
     return this.config.baseUrl.length > 0 && this.config.token.length > 0;
   }
+  async listDomains(signal?: AbortSignal): Promise<readonly string[]> {
+    // API 主机名不一定是收件域名；只接受 Cloud Mail 网站配置明确公布的候选。
+    const payload = unpack(
+      await requestJson(
+        this.config,
+        this.fetcher,
+        "cloud-mail",
+        "/setting/websiteConfig",
+        "GET",
+        undefined,
+        signal,
+      ),
+    );
+    const parsed = parseResponse(
+      z.object({
+        domainList: z
+          .array(
+            z
+              .string()
+              .transform((value) => value.replace(/^@/, ""))
+              .pipe(mailboxDomainSchema.refine((value) => value.length > 0)),
+          )
+          .max(1000),
+      }),
+      payload,
+    );
+    return [...new Set(parsed.domainList)];
+  }
   async createMailbox(
     options: { readonly localPart: string; readonly domain: string },
     signal?: AbortSignal,

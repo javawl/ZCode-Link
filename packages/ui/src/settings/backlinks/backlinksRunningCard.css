@@ -1,0 +1,45 @@
+@property --backlinks-running-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.backlinks-running-card {
+  position: relative;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-warning) 18%, transparent);
+}
+
+/* 只沿边框扫光，保持选中背景及内容不变；装饰层不能遮挡发布、勾选和展开操作。 */
+.backlinks-running-card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 2px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--backlinks-running-angle),
+    transparent 0deg 230deg,
+    color-mix(in oklab, var(--color-warning) 20%, transparent) 280deg,
+    var(--color-warning) 335deg,
+    transparent 360deg
+  );
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: backlinks-running-sweep 3.2s linear infinite;
+}
+
+@keyframes backlinks-running-sweep {
+  to {
+    --backlinks-running-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backlinks-running-card::before {
+    animation: none;
+    background: color-mix(in oklab, var(--color-warning) 75%, transparent);
+  }
+}

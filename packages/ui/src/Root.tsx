@@ -463,8 +463,11 @@ function RootInner({
     setDirectoryBrowserOpen(true);
   }, []);
   const handleReauthenticationRequired = useCallback(() => {
-    setWelcomeScreenOpenReason("session-expired");
-  }, []);
+    // 账号过期只能影响该账号的能力，不能把使用自定义模型的工作区替换为登录页。
+    if (providerAvailabilityLoginEntryGuardEnabled) {
+      setWelcomeScreenOpenReason("session-expired");
+    }
+  }, [providerAvailabilityLoginEntryGuardEnabled]);
   const {
     setWorkspaceActionError,
     startDraftInWorkspace,
@@ -497,7 +500,9 @@ function RootInner({
     setOAuthError,
     setUser,
     onProviderFamilyDomainClearedAfterLogout: () => {
-      setWelcomeScreenOpenReason("logout-provider-required");
+      if (providerAvailabilityLoginEntryGuardEnabled) {
+        setWelcomeScreenOpenReason("logout-provider-required");
+      }
     },
     userId: user?.id,
     onOpenRemoteConnection: allowRemoteWorkspace ? handleOpenRemoteConnection : undefined,
@@ -992,6 +997,7 @@ function RootInner({
       {remoteConnectionDialog}
       {directoryBrowserDialog}
       <OccupationOnboarding
+        autoOpen={false}
         showWindowControls={Boolean(isWindowsDesktop || (isDesktop && !isMacDesktop))}
         showChildrenWhileLoading={!workspaceShellPath && isSettingsTabActive}
         isMacDesktop={isMacDesktop}

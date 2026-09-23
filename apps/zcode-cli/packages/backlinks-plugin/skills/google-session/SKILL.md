@@ -10,6 +10,8 @@ user-invocable: true
 
 ## 初始化或检查
 
+先用 `backlinks_status` 确认所选浏览器。已有 profile / CDP 登录态直接复用，在新页检查登录；不要复制 Cookie 或修改原有 `owned:false` 页面。
+
 1. 调用 `{"action":"status"}`，读取 `running` / `headless`。运行时默认是有界面 Chrome；尚未运行时状态检查本身不启动浏览器。远程宿主的 Chrome 窗口在宿主机器上，不在手机或浏览器客户端内。
 2. 调用 `{"action":"tabs"}`，复用明确属于本次会话检查的 `page`，或创建独立命名页：`{"action":"navigate","page":"google-session","url":"https://accounts.google.com","waitUntil":"domcontentloaded"}`。所有后续页面操作明确带此 `page`，不使用“当前活动页”或“最后打开的页”。
 3. `{"action":"snapshot","page":"google-session","format":"aria"}` 确认是否已经登录。已登录直接复核；未登录时 `{"action":"bringToFront","page":"google-session"}`，告知用户在宿主的 Chrome 窗口亲手完成 Google 登录和 2FA，不让用户把密码或验证码发到聊天。

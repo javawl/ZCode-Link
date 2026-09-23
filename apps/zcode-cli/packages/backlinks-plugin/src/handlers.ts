@@ -73,7 +73,17 @@ export function createBacklinksToolHandlers(options: BacklinksHandlerOptions = {
     if (!browser) {
       const starting = getSettings().then((settings) =>
         (options.createBrowser ?? createBacklinkBrowserRuntime)({
-          profilePath: join(dataBaseDir, ".zcode", "backlinks", "browser", hashFor(identity)),
+          profilePath: join(
+            dataBaseDir,
+            ".zcode",
+            "backlinks",
+            "browser",
+            hashFor(
+              settings.browser.cdpEndpoint ? `cdp:${settings.browser.cdpEndpoint}` : identity,
+            ),
+          ),
+          userDataDir: settings.browser.userDataDir || undefined,
+          cdpEndpoint: settings.browser.cdpEndpoint || undefined,
           workspacePath,
           headless: settings.browser.headless,
           channel: settings.browser.channel,
@@ -116,7 +126,8 @@ export function createBacklinksToolHandlers(options: BacklinksHandlerOptions = {
               .strict()
               .parse(input ?? {});
             const settings = await getSettings();
-            return toBacklinksMcpResult({ settings }, artifactDirectory);
+            const mailbox = await runtime.getMailboxStatus(signal);
+            return toBacklinksMcpResult({ settings, mailbox }, artifactDirectory);
           }
           if (name === "backlinks") {
             const command = backlinksCommandSchema.parse(input);

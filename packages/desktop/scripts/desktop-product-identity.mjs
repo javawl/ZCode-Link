@@ -4,22 +4,24 @@
  * 可与正式版并排安装的 `ZCode Preview`。
  */
 export const ZCODE_PREVIEW_IDENTITY_ENV = "ZCODE_PREVIEW_IDENTITY";
+// LinkAgent 尚未配置自己的发布源，不能从上游 ZCode feed 下载或强制安装另一款客户端。
+export const DESKTOP_UPDATES_ENABLED = false;
 
 const PRODUCTION_IDENTITY = Object.freeze({
   flavor: "production",
-  appId: "dev.zcode.app",
-  productName: "ZCode",
-  linuxExecutableName: "zcode",
-  linuxPackageName: "zcode",
+  appId: "dev.linkagent.app",
+  productName: "LinkAgent",
+  linuxExecutableName: "linkagent",
+  linuxPackageName: "linkagent",
   cuaHelperInstallVariant: null,
 });
 
 const PREVIEW_IDENTITY = Object.freeze({
   flavor: "preview",
-  appId: "dev.zcode.app.preview",
-  productName: "ZCode Preview",
-  linuxExecutableName: "zcode-preview",
-  linuxPackageName: "zcode-preview",
+  appId: "dev.linkagent.app.preview",
+  productName: "LinkAgent Preview",
+  linuxExecutableName: "linkagent-preview",
+  linuxPackageName: "linkagent-preview",
   cuaHelperInstallVariant: "preview",
 });
 
@@ -84,7 +86,7 @@ export function resolveDesktopArtifactSuffix(env = process.env) {
  */
 export function resolveWindowsAppUserModelIdForFlavor(flavor, runtime = { isPackaged: true }) {
   if (runtime.isPackaged === false) {
-    return "cn.aminer.zcode";
+    return "dev.linkagent.app.development";
   }
   return desktopProductIdentities[flavor === "preview" ? "preview" : "production"].appId;
 }

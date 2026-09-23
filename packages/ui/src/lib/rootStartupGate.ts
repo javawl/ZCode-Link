@@ -41,7 +41,8 @@ export function shouldShowRootStartupLoading(state: RootStartupLoadingVisibility
 }
 
 export function shouldEnableProviderAvailabilityLoginEntryGuard(): boolean {
-  return true;
+  // LinkAgent 的工作区不依赖账号或模型；模型由用户进入设置后配置，发送时仍由原有链路校验。
+  return false;
 }
 
 export function shouldResolveProviderStartupState(state: ProviderStartupResolutionState): boolean {

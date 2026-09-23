@@ -8,6 +8,7 @@ import type { EffectiveBacklinksConfig } from "../domain/settings.js";
 import { BacklinksError } from "../domain/errors.js";
 import { BacklinksProviderRegistry } from "./registry.js";
 import { OwnedBacklinksLeases } from "./leases.js";
+import { readMailboxStatus } from "./mailbox-status.js";
 
 export interface BacklinksRuntimePorts {
   readonly config: BacklinksConfigPort;
@@ -48,6 +49,10 @@ export function assembleBacklinksRuntime(ports: BacklinksRuntimePorts): Backlink
   };
   return {
     getSettings: () => ports.config.getSettings(),
+    getMailboxStatus: async (signal) => {
+      const config = await ports.config.readEffective();
+      return readMailboxStatus(config, ports.mailbox(config), signal);
+    },
     updateSettings: (input) => ports.config.updateSettings(input),
     registerBatchSourceProvider: (provider) => batches.register(provider),
     registerMailboxProvider: (provider) => mailboxes.register(provider),

@@ -25,6 +25,7 @@ const batch = (id: number): BacklinkBatchSummary => ({
 });
 
 const state = {
+  executingIds: [] as number[],
   failPublish: false,
   holdPublish: false,
   holding: false,
@@ -64,7 +65,11 @@ const publish = createBacklinksPublisher({
 });
 const store = createBacklinksConsoleStore(
   {
-    listBatches: async () => [batch(99), batch(389), batch(100)],
+    listBatches: async () =>
+      [batch(99), batch(389), batch(100)].map((batch) => ({
+        ...batch,
+        executing: state.executingIds.includes(batch.id),
+      })),
     getBatch: async (id) =>
       ({
         batch: batch(id),

@@ -75,6 +75,64 @@ test(
           .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
         ["选择批次 #389 389.example", "选择批次 #100 100.example", "选择批次 #99 99.example"],
       );
+      await page.evaluate(() => {
+        window.backlinksTest.executingIds = [99];
+      });
+      await page.getByRole("button", { name: "刷新", exact: true }).click();
+      const running = page.getByTestId("backlinks-batch-99");
+      await running.getByText("执行中", { exact: true }).waitFor();
+      assert.equal(
+        await page.locator("article").first().getAttribute("data-testid"),
+        "backlinks-batch-99",
+      );
+      const sweep = await running.evaluate((node) => ({
+        animation: getComputedStyle(node, "::before").animationName,
+        angle: getComputedStyle(node, "::before").getPropertyValue("--backlinks-running-angle"),
+        pointerEvents: getComputedStyle(node, "::before").pointerEvents,
+        light: getComputedStyle(node, "::before").backgroundImage,
+      }));
+      assert.equal(sweep.animation, "backlinks-running-sweep");
+      assert.equal(sweep.pointerEvents, "none");
+      assert.match(sweep.light, /conic-gradient/);
+      await page.waitForFunction(
+        (angle) =>
+          getComputedStyle(
+            document.querySelector('[data-testid="backlinks-batch-99"]'),
+            "::before",
+          ).getPropertyValue("--backlinks-running-angle") !== angle,
+        sweep.angle,
+      );
+      await page.evaluate(() => {
+        document.documentElement.className = "theme-zai-dark dark";
+      });
+      assert.notEqual(
+        await running.evaluate((node) => getComputedStyle(node, "::before").backgroundImage),
+        sweep.light,
+      );
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      assert.equal(
+        await running.evaluate((node) => getComputedStyle(node, "::before").animationName),
+        "none",
+      );
+      assert.notEqual(
+        await running.evaluate((node) => getComputedStyle(node, "::before").backgroundColor),
+        "rgba(0, 0, 0, 0)",
+      );
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.evaluate(() => {
+        document.documentElement.className = "theme-zai-light";
+        window.backlinksTest.executingIds = [];
+      });
+      await page.getByRole("button", { name: "刷新", exact: true }).click();
+      await running.getByText("执行中", { exact: true }).waitFor({ state: "hidden" });
+      assert.equal(
+        await page.locator("article").first().getAttribute("data-testid"),
+        "backlinks-batch-389",
+      );
+      assert.equal(
+        await running.evaluate((node) => getComputedStyle(node, "::before").animationName),
+        "none",
+      );
       await page.getByRole("button", { name: /#389 389.example/ }).click();
       await page.getByText("executed", { exact: true }).waitFor();
       const successColor = await page
@@ -150,6 +208,27 @@ test(
         await page.evaluate(() => window.backlinksTest.settingsPatches[1].supermanager.token),
         "test-only-replacement",
       );
+      await page.getByLabel("验证邮箱域名", { exact: true }).fill("");
+      assert.equal(
+        await page.getByLabel("验证邮箱域名", { exact: true }).getAttribute("placeholder"),
+        "留空：从 Cloud Mail 自动获取",
+      );
+      const profile = page.getByLabel("复用已有独立浏览器目录（绝对路径）", { exact: true });
+      const cdp = page.getByLabel("连接已打开的浏览器（本地 CDP 地址）", { exact: true });
+      await profile.fill("/tmp/fixture-browser-profile");
+      await page.getByRole("button", { name: "保存设置", exact: true }).click();
+      assert.equal(
+        await page.evaluate(() => window.backlinksTest.settingsPatches[2].browser.userDataDir),
+        "/tmp/fixture-browser-profile",
+      );
+      assert.equal(await profile.inputValue(), "/tmp/fixture-browser-profile");
+      await cdp.fill("http://127.0.0.1:9222");
+      assert.equal(await profile.inputValue(), "");
+      await page.getByRole("button", { name: "保存设置", exact: true }).click();
+      const attached = await page.evaluate(() => window.backlinksTest.settingsPatches[3]);
+      assert.equal(attached.browser.cdpEndpoint, "http://127.0.0.1:9222");
+      assert.equal(attached.browser.userDataDir, "");
+      assert.equal(attached.mailboxDomain, "");
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

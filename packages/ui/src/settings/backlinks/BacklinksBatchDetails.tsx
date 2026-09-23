@@ -34,9 +34,57 @@ export function backlinkStatusClass(status: string): string {
   return "text-foreground-subtle";
 }
 
-export function BacklinksBatchDetails({ detail }: { detail: BacklinkBatchDetail }) {
+export function BacklinksBatchDetails({
+  detail,
+  compact = false,
+}: {
+  detail: BacklinkBatchDetail;
+  compact?: boolean;
+}) {
   const { intl } = useZCodeIntl();
   const t = (key: string) => intl.formatMessage({ id: `backlinks.${key}` });
+  // 窄侧栏沿用源 harness 的域名/状态行，避免资料与结果三列表格挤压站点名称。
+  if (compact) {
+    return (
+      <ul
+        className="min-w-0 border-t border-border px-2 py-1 text-ui-sm"
+        aria-label={t("source")}
+        data-testid="backlinks-compact-details"
+      >
+        {detail.items.map((item) => {
+          const host = item.sourceHost || item.sourceName;
+          const statusClass =
+            item.status === "executed"
+              ? "text-success"
+              : item.status === "failed"
+                ? "text-destructive"
+                : "text-foreground-subtle";
+          return (
+            <li
+              key={item.id}
+              className="flex min-w-0 items-center justify-between gap-2 leading-4"
+              data-testid="backlinks-detail-row"
+            >
+              <span
+                className="min-w-0 truncate text-foreground-subtle"
+                title={host}
+                data-testid="backlinks-detail-host"
+              >
+                {host}
+              </span>
+              <span
+                className={`shrink-0 whitespace-nowrap text-right ${statusClass}`}
+                title={item.failureReason || item.status}
+                data-testid="backlinks-detail-status"
+              >
+                {item.status}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
   return (
     <div className="space-y-3 border-t border-border p-3 text-ui-sm">
       <div className="space-y-1">

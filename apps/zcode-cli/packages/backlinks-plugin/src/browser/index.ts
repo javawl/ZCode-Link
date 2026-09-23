@@ -1,4 +1,7 @@
 import type { BrowserType } from "playwright-core";
+import { realpath } from "node:fs/promises";
+import { isAbsolute } from "node:path";
+import { browserCdpEndpointSchema } from "@zcode/backlinks";
 import {
   assertBrowserNotAborted,
   backlinkBrowserInputSchema,
@@ -24,8 +27,12 @@ export interface BacklinkBrowserOptions extends BacklinkBrowserLaunchOptions {
   headless?: boolean;
   channel?: string;
   executablePath?: string;
+  userDataDir?: string;
+  cdpEndpoint?: string;
   timeoutMs?: number;
-  loadChromium?: () => Promise<Pick<BrowserType, "launchPersistentContext">>;
+  loadChromium?: () => Promise<
+    Pick<BrowserType, "launchPersistentContext"> & Partial<Pick<BrowserType, "connectOverCDP">>
+  >;
 }
 
 export interface BacklinkBrowserRuntime {
@@ -47,8 +54,23 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
 
   constructor(options: BacklinkBrowserOptions) {
     validateBrowserLaunchOptions(options);
+    if (
+      (options.userDataDir && options.cdpEndpoint) ||
+      (options.userDataDir && !isAbsolute(options.userDataDir))
+    )
+      throw new BacklinkBrowserError(
+        "BROWSER_INVALID_INPUT",
+        "Choose an absolute existing profile path or a local CDP endpoint",
+      );
+    const endpoint = browserCdpEndpointSchema.safeParse(options.cdpEndpoint ?? "");
+    if (!endpoint.success)
+      throw new BacklinkBrowserError(
+        "BROWSER_INVALID_INPUT",
+        "CDP requires a local HTTP origin without credentials or a path",
+      );
     this.#options = {
       ...options,
+      cdpEndpoint: endpoint.data || undefined,
       ...(options.launchArgs ? { launchArgs: [...options.launchArgs] } : {}),
       ...(options.ignoreDefaultArgs ? { ignoreDefaultArgs: [...options.ignoreDefaultArgs] } : {}),
     };
@@ -108,7 +130,9 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
           "Browser runtime is closing or has been disposed",
         );
       if (command.action === "tabs") {
-        const session = this.#session ?? (this.#launch ? await this.#launch : undefined);
+        const session = this.#options.cdpEndpoint
+          ? await this.ensureSession()
+          : (this.#session ?? (this.#launch ? await this.#launch : undefined));
         return { kind: "tabs", tabs: session ? await session.tabs() : [] } as BacklinkBrowserResult;
       }
       const session = await this.ensureSession();
@@ -164,13 +188,45 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
   }
 
   private async launch(): Promise<BacklinkBrowserSession> {
-    const release = await acquireBrowserProfile(this.#options.profilePath);
+    // 复用真实目录，不能因路径别名绕过独占锁；缺失目录不能静默建成空白账号。
+    let profilePath = this.#options.profilePath;
+    if (this.#options.userDataDir) {
+      try {
+        profilePath = await realpath(this.#options.userDataDir);
+      } catch {
+        throw new BacklinkBrowserError(
+          "BROWSER_PROFILE_ERROR",
+          "The selected existing browser profile cannot be found",
+        );
+      }
+    }
+    const release = await acquireBrowserProfile(profilePath);
     try {
       const chromium = this.#options.loadChromium
         ? await this.#options.loadChromium()
         : (await import("playwright-core")).chromium;
+      if (this.#options.cdpEndpoint) {
+        if (!chromium.connectOverCDP) throw new Error("CDP unavailable");
+        const connection = await chromium.connectOverCDP(this.#options.cdpEndpoint, {
+          timeout: this.#timeoutMs,
+        });
+        const context = connection.contexts()[0];
+        if (!context) {
+          await connection.close();
+          throw new Error("No default context");
+        }
+        const session = new BacklinkBrowserSession(
+          context,
+          this.#timeoutMs,
+          this.#options.workspacePath,
+          release,
+          () => connection.close(),
+        );
+        this.#session = session;
+        return session;
+      }
       const channel = this.#options.channel ?? "chrome";
-      const browserContext = await chromium.launchPersistentContext(this.#options.profilePath, {
+      const browserContext = await chromium.launchPersistentContext(profilePath, {
         headless: this.#options.headless ?? false,
         timeout: this.#timeoutMs,
         ...(this.#options.executablePath
@@ -197,7 +253,9 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
       if (cause instanceof BacklinkBrowserError) throw cause;
       throw new BacklinkBrowserError(
         "BROWSER_LAUNCH_FAILED",
-        "Unable to launch the persistent browser. Install the configured Chrome/Chromium, verify its executable and display access, and close other users of this profile",
+        this.#options.cdpEndpoint
+          ? "Unable to attach to CDP. Verify the existing browser's local debugging address; no new browser was launched"
+          : "Unable to launch the persistent browser. Verify Chrome and the selected profile; if already open, connect via CDP or close its owning runtime first. Never delete its lock",
         { cause },
       );
     }

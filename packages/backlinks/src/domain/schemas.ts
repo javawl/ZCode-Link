@@ -2,6 +2,9 @@ import { z } from "zod";
 
 const id = z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const text = z.string();
+// 后台未填写的网站资料会返回 null；对齐源 harness 的省略语义，保持公共输出为可选字符串。
+// 仅兼容已知的空值，不把数字、数组或对象强转为内容，避免掩盖真正的契约错误。
+const optionalProfileText = text.nullish().transform((value) => value ?? undefined);
 const nullable = text
   .nullable()
   .optional()
@@ -48,12 +51,12 @@ export const batchDetailSchema = z.object({
     name: text,
     siteUrl: text,
     siteHost: text,
-    shortDescription: text.optional(),
-    longDescription: text.optional(),
-    logoUrl: text.optional(),
-    screenshotUrl: text.optional(),
-    keyFeatures: text.optional(),
-    pricingType: text.optional(),
+    shortDescription: optionalProfileText,
+    longDescription: optionalProfileText,
+    logoUrl: optionalProfileText,
+    screenshotUrl: optionalProfileText,
+    keyFeatures: optionalProfileText,
+    pricingType: optionalProfileText,
   }),
   anchors: z.array(z.object({ id, anchorText: text, targetUrl: text })).default([]),
   items: z.array(batchItemSchema).default([]),

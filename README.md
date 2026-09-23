@@ -125,7 +125,7 @@ node apps/zcode-cli/packages/cli/dist/zcode.cjs --help
 
 ### 外链发布
 
-本仓库已迁入 `link-harness 2.0.0` 的外链批次、租约、验证邮箱、持久浏览器及完整发布技能。打开侧栏“外链发布”，配置自己的服务连接后选择批次；点击发布会启用当前工作区的 Backlinks 插件并创建任务。CLI 可启用 `backlinks` 插件后使用 `/backlink-publish`。
+本仓库已迁入 `link-harness 2.0.0` 的外链批次、租约、验证邮箱、持久浏览器及完整发布技能。打开侧栏“项目”旁的“发布批次”，通过“连接与浏览器”配置服务后选择批次；点击发布会启用当前工作区的 Backlinks 插件并创建任务。CLI 可启用 `backlinks` 插件后使用 `/backlink-publish`。
 
 完整功能对照、使用步骤、验证结果和回滚方法见 [中文交付文档](harness/backlinks/DELIVERY.zh-CN.md)，实现边界见 [迁移规范](harness/backlinks/SPEC.md)。
 

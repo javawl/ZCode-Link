@@ -8,7 +8,9 @@ user-invocable: true
 
 使用本插件的 `backlinks`、`backlinks_browser` 和只读 `backlinks_status` 工具执行发布。名称可能由 ZCode MCP 宿主加命名空间，按本次实际发现的工具调用；下文 JSON 是对应工具的参数，不是 Shell 命令。没有实际工具时先报告插件或配置缺失，不臆造工具、不以直接调用生产 API 绕开宿主。
 
-完整浏览器契约见 [浏览器操作说明](../../docs/browser.md)。开始前用 `backlinks_status` 检查所需服务是否配置就绪；它不返回 token。浏览器只在需要时启动；API token、Google 密码、Cookie 均不写入提示词、证据或提交资料。
+完整浏览器契约见 [浏览器操作说明](../../docs/browser.md)。开始前用 `backlinks_status` 检查所需服务；以返回的 `mailbox.configured`、`mailbox.defaultDomain` 和 `mailbox.domainSource` 判断邮箱配置。当前外链生产部署必须确认 `mailbox.defaultDomain` 为 `screwdom.org`；不能把 Cloud Mail 返回列表的首个候选域名当作生产注册域名。状态不创建邮箱、不证明创建权限或收信已验证，也不返回 token。浏览器只在需要时启动；API token、Google 密码、Cookie 均不写入提示词、证据或提交资料。
+
+配置只通过 `backlinks_status` 和「连接与浏览器」设置读取或修改。禁止通过 Shell/搜索遍历其他项目、用户主目录、环境文件、数据库或凭据文件寻找令牌/邮箱域名；不自行拼生产 API 请求。域名自动查询失败时报告工具的 `discoveryError`，仅暂停需要新邮箱注册的条目，已有登录或 Google 登录可继续。
 
 ## 必须保持的执行规则
 
@@ -85,7 +87,7 @@ user-invocable: true
 - 执行模式、完整网站资料包与 anchors、分组内全部 item 信息（id / sourceId / sourceUrl / submitUrl / sourceHost / category / tags / sourceNotes / 状态 / publishedUrl），真实 `leaseId`、允许执行的 item IDs 和独占页面名。
 - 本技能的幂等、证据、租约规则，以及对应 playbook 的完整相关内容；`navigate` 指定独占页，之后所有页面动作都带该页。Google 会话检查和 OAuth 弹窗使用独立明确的页引用，不抢其他组的页面。
 - 找不到评论区前完成懒加载探测；根据实际编辑器能力选择 Website、富文本链接或明确支持的 HTML / BBCode，不向富文本框直接输入 HTML。
-- 可自助邮箱注册；`mailbox_create` 的邮箱域名来自配置，不猜域名。验证码链接先核对站点和邮箱上下文；Google 密码与二次验证只由用户输入。
+- 可自助邮箱注册；当前生产部署必须使用 `backlinks_status` 返回的显式 `screwdom.org` 配置，不能退回 Cloud Mail 域名列表首项。验证码链接先核对站点和邮箱上下文；Google 密码与二次验证只由用户输入。
 - 一次最终提交；结果未知或正文 HTML 被转义写 `failed + manual_required`，不重发。每条立即 `item_result`，然后按观察 `source_tags`。
 - 不自行 claim、release、不改主任务的范围、不另开用户问题。发现人工阻碍时 `bringToFront` 保留页面并报告；失去租约或收到取消后停止新的副作用。
 
@@ -122,8 +124,8 @@ user-invocable: true
 
 ### 4.3 注册与登录
 
-- 已登录：复用当前工作区专用浏览器会话。
-- 有邮箱注册：`{"action":"mailbox_create","localPart":"agent-7f42a1"}`，其中 localPart 每次生成唯一的字母/数字前缀，由配置的 `mailboxDomain` 补齐域名；也可显式提供用户指定且服务支持的 `domain`。未配置时报告缺失，不硬编码运营者域名。使用返回的真实邮箱注册，再调用 `{"action":"mail_wait","mailEmail":"agent-7f42a1@example.test","subjectContains":"Verify","waitTimeoutMs":20000}` 等待验证码或验证链接；示例 mailEmail 必须换成工具实际返回的邮箱，过滤条件按真实站点选择，避免错取其他邮件。
+- 已登录：复用设置选定的浏览器登录态；CDP 模式使用新的独占页面，不修改或关闭 `owned:false` 的原有页面。
+- 有邮箱注册：先确认 `backlinks_status.mailbox.defaultDomain` 为 `screwdom.org`，再调用 `{"action":"mailbox_create","localPart":"agent-7f42a1","domain":"screwdom.org"}`；localPart 每次生成唯一的字母/数字前缀。使用返回的真实邮箱注册，再调用 `{"action":"mail_wait","mailEmail":"agent-7f42a1@example.test","subjectContains":"Verify","waitTimeoutMs":20000}` 等待验证码或验证链接；示例 mailEmail 必须换成工具实际返回的邮箱，过滤条件按真实站点选择，避免错取其他邮件。
 - 有 Google OAuth：按 [Google 会话指南](references/google-session.md) 检查会话、选择明确弹窗并继续。若 Google 登录未就绪但站点同时提供邮箱注册，可走邮箱路径；仅 Google 且未就绪时 `manual_required`。
 - CAPTCHA、设备验证或注册被拒：保留页面，调用 `{"action":"bringToFront","page":"batch-123-item-1001"}`，记人工阻碍。普通“需要登录”不等于人工事件；先完成可用的常规注册流程。
 
