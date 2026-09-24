@@ -119,11 +119,12 @@ test(
         "rgba(0, 0, 0, 0)",
       );
       await page.emulateMedia({ reducedMotion: "no-preference" });
+      await running.getByRole("button", { name: "停止发布", exact: true }).click();
+      await running.getByRole("button", { name: "发布此批次", exact: true }).waitFor();
+      assert.deepEqual(await page.evaluate(() => window.backlinksTest.stopped), [99]);
       await page.evaluate(() => {
         document.documentElement.className = "theme-zai-light";
-        window.backlinksTest.executingIds = [];
       });
-      await page.getByRole("button", { name: "刷新", exact: true }).click();
       await running.getByText("执行中", { exact: true }).waitFor({ state: "hidden" });
       assert.equal(
         await page.locator("article").first().getAttribute("data-testid"),
@@ -181,7 +182,7 @@ test(
       await page.evaluate(() => window.backlinksTest.release());
       await page.getByRole("button", { name: "批量发布 (0)", exact: true }).waitFor();
       assert.deepEqual(await page.evaluate(() => window.backlinksTest.messages), [
-        "/backlink-publish 389 99\n请按以上批次号顺序依次发布，仅处理这些批次。",
+        "/backlink-publish 389 99\n请按以上批次号顺序依次发布，仅处理这些批次。\n读取批次详情后，必须先调用一次 AskUserQuestion，同时询问“执行范围”和“执行模式”；两项回答齐全且有效前，不得认领条目或开始发布。",
       ]);
       assert.deepEqual(await page.evaluate(() => window.backlinksTest.opened), ["test-task"]);
       await page.getByRole("button", { name: "连接与浏览器", exact: true }).click();

@@ -6,6 +6,8 @@ import {
   resolveDesktopProductIdentity,
   resolveWindowsAppUserModelId,
   DESKTOP_UPDATES_ENABLED,
+  DESKTOP_FORCE_UPDATES_ENABLED,
+  LINKAGENT_UPDATE_REPOSITORY,
 } from "../scripts/desktop-product-identity.mjs";
 import {
   DEV_ELECTRON_APP_NAME,
@@ -21,8 +23,14 @@ test("packaged LinkAgent uses a separate identity on every desktop platform", ()
   assert.equal(resolveWindowsAppUserModelId({ ZCODE_ENV: "production" }), identity.appId);
 });
 
-test("LinkAgent does not install upstream ZCode updates", () => {
-  assert.equal(DESKTOP_UPDATES_ENABLED, false);
+test("LinkAgent enables only its own GitHub release feed", () => {
+  assert.equal(DESKTOP_UPDATES_ENABLED, true);
+  assert.equal(DESKTOP_FORCE_UPDATES_ENABLED, false);
+  assert.deepEqual(LINKAGENT_UPDATE_REPOSITORY, {
+    provider: "github",
+    owner: "javawl",
+    repo: "ZCode-Link",
+  });
 });
 
 test("desktop icon formats contain the expected dimensions and alpha", async () => {

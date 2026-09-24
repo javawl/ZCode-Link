@@ -95,10 +95,12 @@ export type ProviderSettingsConnectivityTester = (
 export interface IModelSelectionService {
   readonly onDidChange: Event<ModelSelectionView>;
   getView(input?: ModelSelectionViewInput): Promise<ModelSelectionView>;
+  setConfiguredDefault(selection: ModelSelection): Promise<ModelSelectionView>;
 }
 
 export interface ModelSelectionConfiguredDefaultSource {
   read(): Promise<ModelSelection | undefined>;
+  saveConfiguredDefault?(selection: ModelSelection): Promise<ModelSelection | undefined>;
   onDidChange?(listener: () => void): () => void;
 }
 
@@ -253,6 +255,19 @@ export function createModelSelectionService(
       return { dispose: () => listeners.delete(listener) };
     },
     getView,
+    async setConfiguredDefault(selection) {
+      await ensureReady();
+      if (disposed) throw new Error("ModelSelectionService 已 dispose");
+      if (!configuredDefaultSource?.saveConfiguredDefault) {
+        throw new Error("当前模型选择服务不支持保存默认模型");
+      }
+      const resolved = facade.getView(selection).preferredSelection;
+      if (!resolved || !sameModelSelection(resolved, selection)) {
+        throw new Error("所选模型当前不可用或缺少有效推理档位");
+      }
+      await configuredDefaultSource.saveConfiguredDefault(selection);
+      return await getView();
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -261,6 +276,14 @@ export function createModelSelectionService(
       listeners.clear();
     },
   };
+}
+
+function sameModelSelection(left: ModelSelection, right: ModelSelection): boolean {
+  return (
+    left.providerId === right.providerId &&
+    left.modelId === right.modelId &&
+    left.options?.reasoningLevel === right.options?.reasoningLevel
+  );
 }
 
 function toEvent<T>(subscribe: (listener: (event: T) => void) => () => void): Event<T> {

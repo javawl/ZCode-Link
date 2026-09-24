@@ -15,12 +15,14 @@ export interface BacklinksConsoleState {
   details: Record<number, BacklinkBatchDetail>;
   loading: boolean;
   publishing: boolean;
+  stoppingIds: readonly number[];
   error: string | null;
   refresh(): Promise<void>;
   select(ids: readonly number[], selected: boolean): void;
   toggleDetail(id: number): Promise<void>;
   publishSelected(): Promise<void>;
   publish(ids: readonly number[]): Promise<void>;
+  stop(id: number): Promise<void>;
 }
 
 export function filterBacklinkBatches(
@@ -42,6 +44,7 @@ function errorMessage(error: unknown): string {
 export function createBacklinksConsoleStore(
   reader: BacklinksConsoleReader,
   publish: (ids: readonly number[]) => Promise<void>,
+  stopBatch?: (id: number) => Promise<readonly number[]>,
 ) {
   let refreshVersion = 0;
   const detailVersions = new Map<number, number>();
@@ -53,6 +56,7 @@ export function createBacklinksConsoleStore(
     details: {},
     loading: false,
     publishing: false,
+    stoppingIds: [],
     error: null,
     async refresh() {
       const version = ++refreshVersion;
@@ -144,6 +148,27 @@ export function createBacklinksConsoleStore(
         set({ error: errorMessage(error) });
       } finally {
         set({ publishing: false });
+      }
+    },
+    async stop(id) {
+      const state = get();
+      if (state.stoppingIds.includes(id)) return;
+      if (!state.batches.some((batch) => batch.id === id && batch.executing)) return;
+      set((current) => ({
+        error: null,
+        stoppingIds: [...current.stoppingIds, id],
+      }));
+      try {
+        if (!stopBatch) throw new Error("当前环境未提供批次停止能力。");
+        const relatedIds = await stopBatch(id);
+        set((current) => ({
+          stoppingIds: [...new Set([...current.stoppingIds, ...relatedIds])],
+        }));
+        await get().refresh();
+      } catch (error) {
+        set({ error: errorMessage(error) });
+      } finally {
+        set({ stoppingIds: [] });
       }
     },
   }));

@@ -169,6 +169,14 @@ export function ModelProviderSection({
             })
           }
           onReorderModelIds={(ids) => models.reorderProviderModels(selected.providerId, ids)}
+          defaultModelId={
+            models.defaultModelSelection?.providerId === selected.providerId
+              ? models.defaultModelSelection.modelId
+              : undefined
+          }
+          onSetDefaultModel={async (modelId) => {
+            await models.setDefaultModel(selected.providerId, modelId);
+          }}
           onTestModel={models.testModelConnectivity}
           readOnlyEndpoints={false}
           nameEditable

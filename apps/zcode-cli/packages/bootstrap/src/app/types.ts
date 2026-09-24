@@ -514,6 +514,8 @@ export interface ZCodeApp {
     maxBytes: number;
   }): Promise<DynamicWorkflowRunWorkspaceNodeResult | undefined>;
   disconnectMcpServer(name: string): Promise<McpServerStatus | undefined>;
+  /** 调用 MCP 约定的 session cleanup 工具；owner 身份只来自本会话 trace。 */
+  releaseMcpSessionResources?(serverName: string): Promise<void>;
   listCheckpoints(options?: { limit?: number }): Promise<WorkspaceCheckpointSummary[]>;
   forkFromCheckpoint(options?: {
     targetCheckpointId?: string;

@@ -1,9 +1,11 @@
+/* eslint-disable max-lines -- 单文件夹具需在同一临时服务中关联模型父子会话、批次后台和目标站点的因果断言。 */
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export const PUBLISH_MODEL_ID = "linkagent-publish-fixture";
+export const PUBLISH_DEFAULT_MODEL_ID = "linkagent-publish-default-fixture";
 export const PUBLISH_COMPLETION = "LINKAGENT_PUBLISH_ACCEPTED";
 
 function respondModel(res, request, block) {
@@ -47,7 +49,7 @@ function respondModel(res, request, block) {
   res.end();
 }
 
-export async function createBacklinksPublishFixture(evidence) {
+export async function createBacklinksPublishFixture(evidence, options = {}) {
   const state = {
     modelRequests: [],
     steps: [],
@@ -59,12 +61,20 @@ export async function createBacklinksPublishFixture(evidence) {
     reports: [],
     releases: 0,
     skillLoaded: false,
+    questionsAsked: false,
+    answersObserved: false,
+    agentsLaunched: 0,
+    childCompleted: false,
+    childWaiting: false,
+    childCancelled: false,
+    childToolSets: [],
     anchorObserved: false,
     traces: [],
   };
   let baseUrl;
-  let nextStep = 0;
-  let pending;
+  let parentStep = 0;
+  let childStep = 0;
+  const pending = { child: undefined, parent: undefined };
   const item = () => ({
     id: 1001,
     sourceId: 51,
@@ -100,35 +110,104 @@ export async function createBacklinksPublishFixture(evidence) {
       total: 1,
     },
   });
-  const steps = () => [
+  const parentSteps = () => [
     ["Skill", { skill: "backlinks:backlink-publish" }],
     ["backlinks", { action: "batch_get", batchId: 615 }],
-    ["backlinks", { action: "batch_claim", batchId: 615, itemIds: [1001] }],
     [
-      "backlinks_browser",
-      { action: "navigate", page: "fixture", url: `${baseUrl}/directory/submit` },
+      "AskUserQuestion",
+      {
+        questions: [
+          {
+            question: "本次执行哪些条目范围？",
+            header: "执行范围",
+            multiSelect: false,
+            options: [
+              {
+                label: "全部可执行（推荐）",
+                description: "处理待发布与可重试失败。",
+              },
+              { label: "仅待发布", description: "只处理当前 pending 条目。" },
+            ],
+          },
+          {
+            question: "本次采用哪种执行模式？",
+            header: "执行模式",
+            multiSelect: false,
+            options: [
+              {
+                label: "智能匹配（推荐）",
+                description: "只发布能匹配现有 playbook 的站点。",
+              },
+              { label: "全部尝试", description: "未知类型也进入通用流程。" },
+            ],
+          },
+        ],
+        metadata: { source: "backlink-publish" },
+      },
     ],
+    ["backlinks", { action: "batch_claim", batchId: 615, itemIds: [1001] }],
     ["backlinks", { action: "lease_heartbeat", leaseId: 900 }],
     [
+      "Agent",
+      {
+        description: "发布条目 1001",
+        subagent_type: "backlinks:backlink-publisher",
+        run_in_background: true,
+        prompt:
+          `仅处理 item 1001。批次 615，leaseId 900，独占页面 batch-615-item-1001。` +
+          `目标 ${baseUrl}/directory/submit，推广地址 ${baseUrl}/promoted，` +
+          "锚文本 Fixture Project。先保活，只提交一次，公开核验后立即回写 live。",
+      },
+    ],
+    ["backlinks", { action: "batch_get", batchId: 615 }],
+    ["backlinks", { action: "lease_release", leaseId: 900 }],
+  ];
+  const childSteps = () => [
+    ["backlinks_worker", { action: "lease_heartbeat", leaseId: 900 }],
+    [
       "backlinks_browser",
-      { action: "fill", page: "fixture", selector: 'input[name="name"]', value: "Fixture Project" },
+      {
+        action: "navigate",
+        page: "batch-615-item-1001",
+        url: `${baseUrl}/directory/submit`,
+      },
     ],
     [
       "backlinks_browser",
       {
         action: "fill",
-        page: "fixture",
+        page: "batch-615-item-1001",
+        selector: 'input[name="name"]',
+        value: "Fixture Project",
+      },
+    ],
+    [
+      "backlinks_browser",
+      {
+        action: "fill",
+        page: "batch-615-item-1001",
         selector: 'input[name="url"]',
         value: `${baseUrl}/promoted`,
       },
     ],
-    ["backlinks_browser", { action: "click", page: "fixture", selector: 'button[type="submit"]' }],
     [
       "backlinks_browser",
-      { action: "snapshot", page: "fixture", selector: `a[href="${baseUrl}/promoted"]` },
+      {
+        action: "click",
+        page: "batch-615-item-1001",
+        selector: 'button[type="submit"]',
+      },
     ],
     [
-      "backlinks",
+      "backlinks_browser",
+      {
+        action: "snapshot",
+        page: "batch-615-item-1001",
+        selector: `a[href="${baseUrl}/promoted"]`,
+      },
+    ],
+    [
+      "backlinks_worker",
       {
         action: "item_result",
         itemId: 1001,
@@ -139,7 +218,6 @@ export async function createBacklinksPublishFixture(evidence) {
         evidence: "本地测试站点的公开链接已核验",
       },
     ],
-    ["backlinks", { action: "lease_release", leaseId: 900 }],
     ["backlinks_browser", { action: "close" }],
   ];
   const save = () => writeFile(join(evidence, "workflow.json"), JSON.stringify(state, null, 2));
@@ -152,6 +230,7 @@ export async function createBacklinksPublishFixture(evidence) {
         const body = JSON.parse(raw);
         const offered = (body.tools ?? []).map((tool) => tool.name);
         state.modelRequests.push({
+          model: body.model,
           tools: offered,
           hasPublishCommand: JSON.stringify(body.messages).includes("backlink-publish"),
         });
@@ -160,14 +239,36 @@ export async function createBacklinksPublishFixture(evidence) {
           respondModel(res, body, { type: "text", text: "Fixture publish" });
           return;
         }
-        if (pending) {
+        const role = offered.includes("Agent") ? "parent" : "child";
+        if (role === "child") {
+          state.childToolSets.push(offered);
+          assert.ok(offered.some((name) => name.endsWith("__backlinks_worker")));
+          assert.ok(offered.some((name) => name.endsWith("__backlinks_browser")));
+          assert.ok(offered.some((name) => name.endsWith("__backlinks_status")));
+          assert.equal(
+            offered.some((name) => name.endsWith("__backlinks")),
+            false,
+          );
+          assert.equal(offered.includes("Agent"), false);
+          if (options.pauseChildBeforeFirstTool && childStep === 0) {
+            state.childWaiting = true;
+            res.once("close", () => {
+              state.childCancelled = true;
+              void save();
+            });
+            await save();
+            return;
+          }
+        }
+        const waiting = pending[role];
+        if (waiting) {
           const results = body.messages.flatMap((message) =>
             Array.isArray(message.content) ? message.content : [],
           );
           const result = results.find(
-            (entry) => entry.type === "tool_result" && entry.tool_use_id === pending.id,
+            (entry) => entry.type === "tool_result" && entry.tool_use_id === waiting.id,
           );
-          assert.ok(result, `Missing result for ${pending.name}`);
+          assert.ok(result, `Missing result for ${waiting.name}`);
           assert.equal(
             result.is_error === true,
             false,
@@ -178,30 +279,67 @@ export async function createBacklinksPublishFixture(evidence) {
             output,
             /"isError"\s*:\s*true|BACKLINKS_UNAUTHORIZED|BACKLINKS_TRANSPORT/,
           );
-          if (pending.name === "Skill") {
+          if (waiting.name === "Skill") {
             assert.match(output, /batch_claim/);
+            assert.match(output, /本次执行哪些条目范围/);
+            assert.match(output, /本次采用哪种执行模式/);
+            assert.match(output, /backlinks:backlink-publisher/);
             state.skillLoaded = true;
           }
-          if (pending.input.action === "snapshot") {
+          if (waiting.name === "AskUserQuestion") {
+            assert.match(output, /全部可执行（推荐）/);
+            assert.match(output, /智能匹配（推荐）/);
+            state.answersObserved = true;
+          }
+          if (waiting.name === "Agent") {
+            assert.match(output, /Async agent launched successfully/);
+            state.agentsLaunched += 1;
+          }
+          if (waiting.input.action === "snapshot") {
             assert.match(output, /Fixture Project/);
             state.anchorObserved = true;
           }
-          pending = undefined;
+          pending[role] = undefined;
         }
-        const step = steps()[nextStep++];
-        if (!step) {
+        if (role === "parent" && parentStep >= 6 && !state.childCompleted) {
           await save();
-          respondModel(res, body, { type: "text", text: PUBLISH_COMPLETION });
+          respondModel(res, body, { type: "text", text: "等待发布子代理完成。" });
+          return;
+        }
+        const sequence = role === "parent" ? parentSteps() : childSteps();
+        const index = role === "parent" ? parentStep : childStep;
+        const step = sequence[index];
+        if (!step) {
+          if (role === "child") state.childCompleted = true;
+          await save();
+          respondModel(res, body, {
+            type: "text",
+            text: role === "parent" ? PUBLISH_COMPLETION : "item 1001 已核验并回写 live。",
+          });
           return;
         }
         const [kind, input] = step;
         const name =
-          kind === "Skill" ? "Skill" : offered.find((value) => value.endsWith(`__${kind}`));
+          kind === "Skill" || kind === "AskUserQuestion" || kind === "Agent"
+            ? kind
+            : offered.find((value) => value.endsWith(`__${kind}`));
         assert.ok(name && offered.includes(name), `Missing actual tool: ${kind}`);
-        pending = { id: `call_fixture_${nextStep}`, name, input };
-        state.steps.push({ name, action: input.action ?? "load-skill" });
+        if (role === "parent") parentStep += 1;
+        else childStep += 1;
+        pending[role] = { id: `call_fixture_${role}_${index}`, name, input };
+        if (kind === "AskUserQuestion") state.questionsAsked = true;
+        state.steps.push({
+          name,
+          action:
+            input.action ??
+            (kind === "Skill"
+              ? "load-skill"
+              : kind === "Agent"
+                ? "launch-publisher-agent"
+                : "ask-scope-and-mode"),
+        });
         await save();
-        respondModel(res, body, { type: "tool_use", ...pending });
+        respondModel(res, body, { type: "tool_use", ...pending[role] });
         return;
       }
       if (req.url?.startsWith("/api/agent/")) {

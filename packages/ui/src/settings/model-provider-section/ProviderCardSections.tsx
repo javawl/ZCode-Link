@@ -355,6 +355,8 @@ export function ProviderModelsSection({
   onDeleteModel,
   onAddModel,
   onReorderModelIds,
+  defaultModelId,
+  onSetDefaultModel,
   settingsRevision = 0,
 }: {
   providerId: string;
@@ -372,6 +374,8 @@ export function ProviderModelsSection({
   onModelEnabledChange?: (modelId: string, enabled: boolean) => void | Promise<void>;
   onAddModel: (model: ProviderSettingsFormModel) => void | Promise<void>;
   onReorderModelIds?: (modelIds: string[]) => void;
+  defaultModelId?: string;
+  onSetDefaultModel?: (modelId: string) => Promise<void>;
   settingsRevision?: number;
 }) {
   const { intl } = useZCodeIntl();
@@ -530,6 +534,10 @@ export function ProviderModelsSection({
                       );
                     }}
                     onTest={onTestModel}
+                    isDefault={defaultModelId === model.modelId}
+                    onSetDefault={
+                      onSetDefaultModel ? () => onSetDefaultModel(model.modelId) : undefined
+                    }
                   />
                   {!completeProperties && (
                     <div className="px-3 pb-2 text-ui-sm text-destructive">

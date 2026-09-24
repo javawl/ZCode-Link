@@ -110,7 +110,11 @@ test(
         .first()
         .waitFor();
       await page.screenshot({ path: join(evidence, "03-backlinks.png") });
-      await page.getByTestId("settings-section-nav-usage").click();
+      assert.deepEqual(
+        await page.locator('[data-testid^="settings-section-nav-"]').allTextContents(),
+        ["常规", "外观", "模型设置", "外链发布"],
+      );
+      assert.equal(await page.getByTestId("settings-section-nav-usage").count(), 0);
       await assertNoCommerce(page);
       await app.close();
       page = await launch();

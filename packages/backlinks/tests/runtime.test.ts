@@ -181,3 +181,45 @@ test("shutdown waits for an in-flight known claim before releasing it", async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("session cleanup releases only leases owned by that publishing session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "backlinks-session-leases-"));
+  const released: number[] = [];
+  let leaseId = 70;
+  try {
+    const runtime = createBacklinksRuntime({
+      dataBaseDir: dir,
+      env: { SUPERMANAGER_BASE_URL: "https://sm.test", SUPERMANAGER_TOKEN: "token" },
+      fetch: async (url) => {
+        const path = String(url);
+        if (path.endsWith("/claim")) {
+          leaseId += 1;
+          return Response.json({
+            leaseId,
+            leaseExpiresAt: "server",
+            items: [item(3, 3)],
+          });
+        }
+        const release = path.match(/leases\/(\d+)\/release$/u);
+        if (release) {
+          released.push(Number(release[1]));
+          return Response.json({});
+        }
+        return Response.json({
+          batch,
+          website: { id: 1, name: "Site", siteUrl: "https://site.test", siteHost: "site.test" },
+          anchors: [],
+          items: [item(3, 3)],
+        });
+      },
+    });
+    await runtime.claimForOwner(9, undefined, "session-a");
+    await runtime.claimForOwner(9, undefined, "session-b");
+    await runtime.releaseOwnedLeasesForOwner("session-a");
+    assert.deepEqual(released, [71]);
+    await runtime.releaseOwnedLeases();
+    assert.deepEqual(released, [71, 72]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

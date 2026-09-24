@@ -126,19 +126,26 @@ export function BacklinksConsole({
         {batches.map((batch) => {
           const expanded = state.expandedIds.includes(batch.id);
           const detail = state.details[batch.id];
+          const stopping = state.stoppingIds.includes(batch.id);
           const actions = (
             <div className={compact ? "flex items-center justify-end gap-2 px-2 pb-2" : "contents"}>
               {batch.executing ? (
                 <span className="text-ui-xs text-warning">{t("executing")}</span>
               ) : null}
               <Button
-                variant={compact ? "default" : "outline"}
+                variant={batch.executing ? "destructive" : compact ? "default" : "outline"}
                 size="sm"
                 className={cn(compact && "h-6 px-2 text-ui-xs")}
-                disabled={!canPublish || state.publishing}
-                onClick={() => void state.publish([batch.id])}
+                disabled={!canPublish || state.publishing || stopping}
+                onClick={() =>
+                  void (batch.executing ? state.stop(batch.id) : state.publish([batch.id]))
+                }
               >
-                {t(compact ? "publishShort" : "publish")}
+                {stopping
+                  ? t("stopping")
+                  : batch.executing
+                    ? t(compact ? "stopShort" : "stop")
+                    : t(compact ? "publishShort" : "publish")}
               </Button>
             </div>
           );

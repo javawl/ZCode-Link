@@ -1,4 +1,5 @@
 import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE } from "@zcode/contracts";
+import { isLinkAgentOfficialPlugin } from "@zcode/shared";
 import { OFFICIAL_BACKLINKS_PLUGIN_DEFINITION } from "./official-backlinks-plugin-definition.js";
 
 // 内置插件的商店信息 seed（原样写入官方 marketplace.json 的条目 raw，键名与 CDN 目录
@@ -365,18 +366,22 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = 
   },
 ];
 
+/** LinkAgent 只把外链插件带入实际运行面；完整目录仅保留源码兼容和迁移识别。 */
+export const ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] =
+  OFFICIAL_PLUGIN_DEFINITIONS.filter((definition) => isLinkAgentOfficialPlugin(definition.name));
+
 // 在 official plugin 定义里标了 defaultEnabled: true 的, 拼成 `<name>@<marketplace>` 形式,
 // 透传给 adapter 让它在用户没显式配置时默认开启 (内容型 plugin 才适用)。
 // 注意: 任何解析 plugin 的入口 (CLI 子命令 resolveZCodePlugins、应用启动 resolveStartupPlugins)
 // 都必须把这个集合传给 discoverNodePluginsSync, 否则 defaultEnabled 不生效。
 export const DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS: ReadonlySet<string> = new Set(
-  OFFICIAL_PLUGIN_DEFINITIONS.filter((definition) => definition.defaultEnabled).map(
+  ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS.filter((definition) => definition.defaultEnabled).map(
     (definition) => `${definition.name}@${ZCODE_OFFICIAL_PLUGIN_MARKETPLACE}`,
   ),
 );
 
 export function resolveOfficialPluginHostMcpServerNames(pluginId: string): string[] {
-  const definition = OFFICIAL_PLUGIN_DEFINITIONS.find(
+  const definition = ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS.find(
     (candidate) => `${candidate.name}@${ZCODE_OFFICIAL_PLUGIN_MARKETPLACE}` === pluginId,
   );
   return definition?.hostMcpServerNames ? [...definition.hostMcpServerNames] : [];
@@ -389,7 +394,7 @@ export function resolveOfficialPluginHostMcpServerNames(pluginId: string): strin
 export function resolveOfficialPluginNameByHostMcpServerName(
   serverName: string,
 ): string | undefined {
-  return OFFICIAL_PLUGIN_DEFINITIONS.find((definition) =>
+  return ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS.find((definition) =>
     definition.hostMcpServerNames?.includes(serverName),
   )?.name;
 }

@@ -18,6 +18,7 @@ import { startPromptTurn, turnBackgroundAttributionOf } from "../prompt-turn.js"
 import { requireRecord } from "../record-access.js";
 import type { V4CommandCoreHost, V4SessionRecordView } from "../types.js";
 import { V4CommandNoopError } from "../../v4-gateway.js";
+import { completeSessionScopedStop } from "./session-stop-cleanup.js";
 
 /** 等 idle 轮询参数：25ms 间隔、5s 超时。 */
 const IDLE_POLL_INTERVAL_MS = 25;
@@ -352,6 +353,7 @@ async function stop(
     if (pausedGoal) {
       await host.afterLegacyStateMutation?.(record, "session_stop_goal_paused");
     }
+    await completeSessionScopedStop(record, payload);
     return undefined;
   }
 
@@ -366,6 +368,7 @@ async function stop(
   if (pausedGoal) {
     await host.afterLegacyStateMutation?.(record, "session_stop_goal_paused");
   }
+  await completeSessionScopedStop(record, payload);
   return undefined;
 }
 

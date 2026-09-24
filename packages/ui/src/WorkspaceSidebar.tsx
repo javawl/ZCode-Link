@@ -50,6 +50,7 @@ import {
 } from "@dnd-kit/sortable";
 import type { Locale, RemoteTarget, UserInfo, ZCodeTaskMeta } from "@zcode/shared";
 import { BUILTIN_MODEL_PROVIDER_IDS } from "@zcode/shared";
+import { LINK_AGENT_PRODUCT_PROFILE } from "@zcode/shared";
 import {
   TID_CONVERSATION_NEW_TASK,
   TID_CONVERSATION_SECTION,
@@ -392,7 +393,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(false);
   const [fileTreeTarget, setFileTreeTarget] = useState<SidebarFileTreeTarget | null>(null);
   const [groupedStickyHeader, setGroupedStickyHeader] = useState<ReactNode | null>(null);
-  const [backlinksOpen, setBacklinksOpen] = useState(false);
+  const [backlinksOpen, setBacklinksOpen] = useState(true);
   const [taskOrganizeBy, setTaskOrganizeBy] = useState<TaskOrganizeBy>(
     () => readSidebarTaskPreferences().organizeBy,
   );
@@ -873,11 +874,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
     },
     previous: lastStableTaskGroupTogglePresentationRef.current,
   });
-  const activePrimaryTaskMode: PrimaryTaskMode = backlinksOpen
-    ? "backlinks"
-    : taskOrganizeBy === "grouped"
-      ? "grouped"
-      : "workspace";
+  const activePrimaryTaskMode: PrimaryTaskMode = backlinksOpen ? "backlinks" : "workspace";
   const workspaceTaskViewValue = taskOrganizeBy === "chronological" ? "chronological" : "project";
   const showTaskViewFilter = activePrimaryTaskMode === "workspace" || showArchivedTasks;
   const showWorkspaceViewOptions = activePrimaryTaskMode === "workspace" && !showArchivedTasks;
@@ -1049,31 +1046,13 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 />
                 <TabsTrigger
                   ref={(node) => {
-                    primaryTaskTabTriggerRefs.current.grouped = node;
-                  }}
-                  value="grouped"
-                  className="relative z-10 h-6 flex-none gap-1 rounded-full border-transparent bg-transparent py-0 pl-1.5 pr-2 text-ui-sm font-medium text-foreground-subtle transition-colors data-active:border-transparent data-active:bg-transparent data-active:text-foreground data-active:shadow-none dark:data-active:border-transparent dark:data-active:bg-transparent"
-                >
-                  <Hash aria-hidden="true" className="size-3 shrink-0" />
-                  <span>
-                    {intl.formatMessage({
-                      id: "workspaceSidebar.organizeGrouped",
-                    })}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger
-                  ref={(node) => {
                     primaryTaskTabTriggerRefs.current.workspace = node;
                   }}
                   value="workspace"
                   className="relative z-10 h-6 flex-none gap-1 rounded-full border-transparent bg-transparent py-0 pl-1.5 pr-2 text-ui-sm font-medium text-foreground-subtle transition-colors data-active:border-transparent data-active:bg-transparent data-active:text-foreground data-active:shadow-none dark:data-active:border-transparent dark:data-active:bg-transparent"
                 >
-                  <Folder aria-hidden="true" className="size-3 shrink-0" />
-                  <span>
-                    {intl.formatMessage({
-                      id: "workspaceSidebar.organizeByProject",
-                    })}
-                  </span>
+                  <Clock3 aria-hidden="true" className="size-3 shrink-0" />
+                  <span>{intl.formatMessage({ id: "backlinks.runsTab" })}</span>
                 </TabsTrigger>
                 <TabsTrigger
                   ref={(node) => {
@@ -1289,40 +1268,44 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
           aria-hidden={isFileTreeOpen}
         >
           <div className={cn("flex flex-col gap-1 px-2", isWindowsDesktop ? "py-2" : "py-3")}>
-            <WorkspaceNewTaskTooltip disabledReason={workspaceReadOnlyReason}>
-              <NewTaskButtonGroup
-                disabled={workspaceReadOnly}
-                onCreateTask={() => {
-                  if (workspaceReadOnly) {
-                    return;
-                  }
-                  if (taskViewMode === "grouped") {
-                    if (createGroupedTaskDraftAction) {
-                      createGroupedTaskDraftAction();
+            {LINK_AGENT_PRODUCT_PROFILE.features.genericTaskCreation ? (
+              <WorkspaceNewTaskTooltip disabledReason={workspaceReadOnlyReason}>
+                <NewTaskButtonGroup
+                  disabled={workspaceReadOnly}
+                  onCreateTask={() => {
+                    if (workspaceReadOnly) {
                       return;
                     }
-                    onCreateTask({ groupedDraftPlacement: { type: "top" } });
-                    return;
-                  }
-                  onCreateTask({ createSource: "project" });
-                }}
-              />
-            </WorkspaceNewTaskTooltip>
-            <Button
-              variant="ghost"
-              onClick={onOpenCommandCenter}
-              data-icon="inline-start"
-              size="lg"
-              className="w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground"
-            >
-              <Search className="size-4" />
-              <span className="min-w-0 flex-1 truncate text-left">
-                {intl.formatMessage({ id: "commandCenter.open" })}
-              </span>
-              <span className="ml-auto shrink-0 text-ui-xs font-normal text-foreground-subtlest">
-                {commandCenterShortcutLabel}
-              </span>
-            </Button>
+                    if (taskViewMode === "grouped") {
+                      if (createGroupedTaskDraftAction) {
+                        createGroupedTaskDraftAction();
+                        return;
+                      }
+                      onCreateTask({ groupedDraftPlacement: { type: "top" } });
+                      return;
+                    }
+                    onCreateTask({ createSource: "project" });
+                  }}
+                />
+              </WorkspaceNewTaskTooltip>
+            ) : null}
+            {LINK_AGENT_PRODUCT_PROFILE.features.commandCenter ? (
+              <Button
+                variant="ghost"
+                onClick={onOpenCommandCenter}
+                data-icon="inline-start"
+                size="lg"
+                className="w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground"
+              >
+                <Search className="size-4" />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {intl.formatMessage({ id: "commandCenter.open" })}
+                </span>
+                <span className="ml-auto shrink-0 text-ui-xs font-normal text-foreground-subtlest">
+                  {commandCenterShortcutLabel}
+                </span>
+              </Button>
+            ) : null}
             {/* 远程入口展示策略统一走 useRemoteConnectionEntryVisibility，避免与其他入口出现分叉。*/}
             {/* {showRemoteConnectionEntry ? (
               <SSHDialog
@@ -1341,36 +1324,40 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
                 }
               />
             ) : null} */}
-            <Button
-              variant="ghost"
-              onClick={handleOpenAutomationsMain}
-              data-icon="inline-start"
-              data-testid={TID_AUTOMATIONS_OPEN}
-              size="lg"
-              aria-pressed={automationsActive}
-              className={cn(
-                "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
-                automationsActive && "bg-selected text-foreground",
-              )}
-            >
-              <CalendarClock className="size-4" />
-              {intl.formatMessage({ id: "workspace.openScheduledSettings" })}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={handleOpenPluginStoreMain}
-              data-icon="inline-start"
-              data-testid="plugin-store-sidebar-open"
-              size="lg"
-              aria-pressed={pluginStoreActive}
-              className={cn(
-                "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
-                pluginStoreActive && "bg-selected text-foreground",
-              )}
-            >
-              <Blocks className="size-4" />
-              {intl.formatMessage({ id: "workspace.openPluginsSettings" })}
-            </Button>
+            {LINK_AGENT_PRODUCT_PROFILE.features.automations ? (
+              <Button
+                variant="ghost"
+                onClick={handleOpenAutomationsMain}
+                data-icon="inline-start"
+                data-testid={TID_AUTOMATIONS_OPEN}
+                size="lg"
+                aria-pressed={automationsActive}
+                className={cn(
+                  "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
+                  automationsActive && "bg-selected text-foreground",
+                )}
+              >
+                <CalendarClock className="size-4" />
+                {intl.formatMessage({ id: "workspace.openScheduledSettings" })}
+              </Button>
+            ) : null}
+            {LINK_AGENT_PRODUCT_PROFILE.features.pluginStore ? (
+              <Button
+                variant="ghost"
+                onClick={handleOpenPluginStoreMain}
+                data-icon="inline-start"
+                data-testid="plugin-store-sidebar-open"
+                size="lg"
+                aria-pressed={pluginStoreActive}
+                className={cn(
+                  "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
+                  pluginStoreActive && "bg-selected text-foreground",
+                )}
+              >
+                <Blocks className="size-4" />
+                {intl.formatMessage({ id: "workspace.openPluginsSettings" })}
+              </Button>
+            ) : null}
           </div>
 
           <div className="relative flex min-h-0 flex-1 flex-col">

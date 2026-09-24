@@ -28,6 +28,10 @@ import { useSettings } from "@/hooks/useSettingService.js";
 import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
 import { initializeNewTaskDraft } from "@/v4/composer/newTaskDraft.js";
 import {
+  applyLinkAgentPermissionPolicy,
+  buildLinkAgentSubmissionConfig,
+} from "@/v4/composer/linkAgentPermissionPolicy.js";
+import {
   clearV4ComposerDraft,
   persistV4ComposerDraft,
   readV4ComposerDraft,
@@ -170,6 +174,7 @@ export function useDraftConfigControl(params: {
     draft = applyComposerPlanTransition(draft, sessionConfig.planTransition);
     draft = applyComposerPermissionGrant(draft, sessionConfig.permissionGrant);
   }
+  draft = applyLinkAgentPermissionPolicy(draft);
   if (draft !== currentState.draft) currentState = { ...currentState, draft };
   if (currentState !== storedState) setStoredState(currentState);
   const stateRef = useRef(currentState);
@@ -180,14 +185,15 @@ export function useDraftConfigControl(params: {
     ? (modelSelectionView.effectiveSelection ?? undefined)
     : draft.modelSelection;
   const draftConfig = useMemo<Partial<SessionConfigState>>(
-    () => ({
-      mode: draft.mode,
-      planEnabled: draft.planEnabled ?? false,
-      modelSelection: effectiveSelection,
-      provider: effectiveSelection?.providerId ?? "",
-      model: effectiveSelection?.modelId ?? "",
-      thought: effectiveSelection?.options?.reasoningLevel ?? "",
-    }),
+    () =>
+      buildLinkAgentSubmissionConfig({
+        mode: draft.mode,
+        planEnabled: draft.planEnabled ?? false,
+        modelSelection: effectiveSelection,
+        provider: effectiveSelection?.providerId ?? "",
+        model: effectiveSelection?.modelId ?? "",
+        thought: effectiveSelection?.options?.reasoningLevel ?? "",
+      }),
     [draft.mode, draft.planEnabled, effectiveSelection],
   );
   const draftConfigRef = useRef(draftConfig);
@@ -209,7 +215,7 @@ export function useDraftConfigControl(params: {
       // 旧 scope 的延迟编辑器回调不能写入刚切换到的会话。
       if (stateRef.current.scopeKey !== scopeKey) return;
       const previous = stateRef.current.draft;
-      const next = update(previous);
+      const next = applyLinkAgentPermissionPolicy(update(previous));
       const nextState = { ...stateRef.current, draft: next };
       stateRef.current = nextState;
       const selection =
@@ -232,7 +238,7 @@ export function useDraftConfigControl(params: {
   );
   const updateDraftConfig = useCallback(
     (update: (current: Partial<SessionConfigState>) => Partial<SessionConfigState>) => {
-      const next = update(draftConfigRef.current);
+      const next = buildLinkAgentSubmissionConfig(update(draftConfigRef.current));
       const mode = submissionModeSchema.safeParse(next.mode);
       updateComposerDraft((current) => ({
         ...current,
@@ -292,11 +298,13 @@ export function useDraftConfigControl(params: {
   const replaceComposerDraft = useCallback(
     (replacement: Omit<V4ComposerDraft, "updatedAt">) => {
       // 撤回编辑替换正文/配置，但不能忘记已经消费的授权，否则旧快照会再次覆盖新选择。
-      updateComposerDraft((current) => ({
-        ...replacement,
-        lastPermissionGrantId: current.lastPermissionGrantId,
-        updatedAt: Date.now(),
-      }));
+      updateComposerDraft((current) =>
+        applyLinkAgentPermissionPolicy({
+          ...replacement,
+          lastPermissionGrantId: current.lastPermissionGrantId,
+          updatedAt: Date.now(),
+        }),
+      );
     },
     [updateComposerDraft],
   );
@@ -458,24 +466,9 @@ export function useDraftConfigControl(params: {
   );
 
   const handleDraftSwitchMode = useCallback(
-    (mode: string) => {
-      if (mode === "plan" || mode === "plan-off") {
-        updateComposerDraft((current) => ({
-          ...current,
-          mode: current.mode === "plan" ? "build" : (current.mode ?? "build"),
-          planEnabled: mode === "plan",
-          initializeFromNewTask: undefined,
-        }));
-        return;
-      }
-      // 模式与模型同属当前 scope；不再写全局偏好，避免别的任务反向覆盖。
-      const parsed = submissionModeSchema.safeParse(mode);
-      if (parsed.success)
-        updateComposerDraft((current) => ({
-          ...current,
-          mode: parsed.data,
-          initializeFromNewTask: undefined,
-        }));
+    (_mode: string) => {
+      // LinkAgent 的权限由产品 Profile 固定，旧快捷键或延迟 UI 事件也不能改写它。
+      updateComposerDraft(applyLinkAgentPermissionPolicy);
     },
     [updateComposerDraft],
   );
@@ -501,7 +494,7 @@ export function buildDraftCreateConfigPayload(
   draftConfig: Partial<SessionConfigState>,
   appFollowupMode?: SessionConfigState["followupMode"] | null,
 ): { config?: Partial<SessionConfigState> } {
-  const config: Partial<SessionConfigState> = { ...draftConfig };
+  const config = buildLinkAgentSubmissionConfig(draftConfig);
   if (appFollowupMode) {
     config.followupMode = appFollowupMode;
   }

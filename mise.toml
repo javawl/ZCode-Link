@@ -16,9 +16,8 @@ depends = ["install"]
 run = "mise exec -- node scripts/mise-run.mjs pnpm bootstrap"
 
 [tasks.dev]
-description = "Start the desktop app in an isolated local test environment."
-env = { ZCODE_DATA_BASE_DIR = "{{env.HOME}}/.zcode-dev-home" }
-run = "mise exec -- node scripts/mise-run.mjs pnpm dev:desktop:test"
+description = "Start LinkAgent Desktop with its isolated local data root."
+run = "mise exec -- node scripts/mise-run.mjs pnpm dev:desktop"
 
 [tasks.dev-desktop-prod]
 description = "Start the desktop app against the production environment."

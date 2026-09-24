@@ -1,9 +1,11 @@
 import type { ConfigResult } from "@zcode/adapters/config";
 import { resolveInitialModelSelection, type ModelSelectionOptions } from "@zcode/provider";
 import { resolveBashTimeoutPolicy, type AgentProfile, type AgentRuntimeConfig } from "@zcode/core";
-import { type BuiltInSubagentModelSelectionOverrides } from "@zcode/shared";
 import {
-  type CollaborationMode,
+  LINK_AGENT_PRODUCT_PROFILE,
+  type BuiltInSubagentModelSelectionOverrides,
+} from "@zcode/shared";
+import {
   type HookConfigSource,
   type HookEventName,
   type HookMatcherConfig,
@@ -34,7 +36,6 @@ export function resolveAppRuntimeConfig(input: {
   cliStorageRoot: string;
   configResult: ConfigResult;
   options: ZCodeAppOptions;
-  persistedMode?: CollaborationMode;
   builtInMcpServers?: Record<string, McpServerConfig>;
   builtInSubagentModelSelectionOverrides?: BuiltInSubagentModelSelectionOverrides;
   pluginHooks?: Partial<Record<HookEventName, HookMatcherConfig[]>>;
@@ -50,7 +51,6 @@ export function resolveAppRuntimeConfig(input: {
     cliStorageRoot,
     configResult,
     options,
-    persistedMode,
     builtInMcpServers,
     pluginMcpServers,
     pluginRuntimeFeatures,
@@ -120,7 +120,8 @@ export function resolveAppRuntimeConfig(input: {
     bashTimeoutPolicy:
       options.runtimeConfig?.bashTimeoutPolicy ??
       resolveBashTimeoutPolicy(options.env ?? process.env),
-    mode: options.runtimeConfig?.mode ?? persistedMode ?? configResult.config.permission.mode,
+    // LinkAgent 的工具权限是产品策略，不读取旧项目偏好或通用 CLI 默认值。
+    mode: LINK_AGENT_PRODUCT_PROFILE.agentPermission.mode,
     modelSelection: initialModelSelection,
     // 仅接受显式传入的会话级工具面（ZCode Protocol session/create 或 CLI
     // --allowed-tools/--disallowed-tools）。不要从 config.permission.allowedTools

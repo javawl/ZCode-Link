@@ -145,6 +145,8 @@ export function InlineEditableProviderCard({
   onDelete,
   onTestModel,
   onReorderModelIds,
+  defaultModelId,
+  onSetDefaultModel,
   readOnlyEndpoints,
   presetApiKeyUrl,
   onOpenPresetApiKey,
@@ -172,6 +174,8 @@ export function InlineEditableProviderCard({
   onDelete?: () => void | Promise<void>;
   onTestModel?: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
   onReorderModelIds?: (modelIds: string[]) => Promise<void>;
+  defaultModelId?: string;
+  onSetDefaultModel?: (modelId: string) => Promise<void>;
   readOnlyEndpoints?: boolean;
   presetApiKeyUrl?: string;
   onOpenPresetApiKey?: () => void;
@@ -853,6 +857,8 @@ export function InlineEditableProviderCard({
           onDeleteModel={handleDeleteModel}
           onAddModel={handleAddModel}
           onReorderModelIds={onReorderModelIds ? handleReorderModelIds : undefined}
+          defaultModelId={defaultModelId}
+          onSetDefaultModel={onSetDefaultModel}
           settingsRevision={settingsRevision ?? 0}
         />
       </div>

@@ -129,13 +129,13 @@ test(
       const sidebar = page.getByTestId("sidebar");
       const tab = sidebar.getByTestId("backlinks-sidebar-tab");
       await tab.waitFor({ timeout: 60_000 });
-      assert.deepEqual(await sidebar.getByRole("tab").allTextContents(), [
-        "分组",
-        "项目",
-        "发布批次",
-      ]);
+      assert.deepEqual(await sidebar.getByRole("tab").allTextContents(), ["运行记录", "发布批次"]);
+      assert.equal(await tab.getAttribute("aria-selected"), "true");
+      assert.equal(await sidebar.getByRole("button", { name: "新建任务", exact: true }).count(), 0);
+      assert.equal(await sidebar.getByRole("button", { name: "搜索", exact: true }).count(), 0);
+      assert.equal(await sidebar.getByRole("button", { name: "自动化", exact: true }).count(), 0);
+      assert.equal(await sidebar.getByRole("button", { name: "插件市场", exact: true }).count(), 0);
       assert.equal(await page.getByTestId("backlinks-sidebar-open").count(), 0);
-      await tab.click();
       let panel = page.getByTestId("backlinks-sidebar-panel");
       await panel.getByRole("alert").filter({ hasText: "Agent Token" }).waitFor();
       assert.match(await panel.getByRole("alert").innerText(), /401/);
@@ -155,6 +155,15 @@ test(
       assert.equal(
         await panel.locator("article").first().getAttribute("data-testid"),
         "backlinks-batch-99",
+      );
+      const executingRow = panel.getByTestId("backlinks-batch-99");
+      assert.equal(
+        await executingRow.getByRole("button", { name: "停止", exact: true }).count(),
+        1,
+      );
+      assert.equal(
+        await executingRow.getByRole("button", { name: "发布", exact: true }).count(),
+        0,
       );
       await panel.getByRole("textbox", { name: "搜索网站、域名或批次号" }).fill("615");
       assert.equal(await panel.locator("article").count(), 1);
@@ -193,9 +202,7 @@ test(
         true,
       );
       await page.screenshot({ path: join(evidence, "sidebar-batches.png") });
-      await sidebar.getByRole("tab", { name: "项目", exact: true }).click();
-      assert.equal(await panel.count(), 0);
-      await sidebar.getByRole("tab", { name: "分组", exact: true }).click();
+      await sidebar.getByRole("tab", { name: "运行记录", exact: true }).click();
       assert.equal(await panel.count(), 0);
       await tab.click();
       await panel.getByTestId("backlinks-batch-615").waitFor();

@@ -50,6 +50,7 @@ type SessionFacade = Pick<
   | "close"
   | "connectMcpServer"
   | "disconnectMcpServer"
+  | "releaseMcpSessionResources"
   | "generateWorkspaceText"
   | "testModelConnectivity"
   | "forkFromCheckpoint"
@@ -380,6 +381,23 @@ export function createSessionFacade(deps: CreateSessionFacadeDeps): SessionFacad
     disconnectMcpServer: async (name) => {
       if (!deps.mcpPort) return undefined;
       return deps.mcpPort.disconnectServer(name);
+    },
+    releaseMcpSessionResources: async (serverName) => {
+      if (!deps.mcpPort) throw new Error("MCP is disabled");
+      if (!deps.configuredMcpServers[serverName]) {
+        throw new Error(`MCP server is not configured: ${serverName}`);
+      }
+      const result = await deps.mcpPort.callTool({
+        serverName,
+        toolName: "backlinks_cleanup",
+        arguments: {},
+        trace: deps.traceContext,
+        runtimeScope: "main",
+        workspacePath: deps.workingDirectory,
+      });
+      if (result.isError) {
+        throw new Error(`MCP session cleanup failed for ${serverName}`);
+      }
     },
     listCheckpoints: async (options) => {
       await deps.prepareResume();

@@ -2,7 +2,7 @@ import { realpath } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Server, type Tool } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { backlinksCommandSchema } from "@zcode/backlinks";
+import { backlinkWorkerCommandSchema, backlinksCommandSchema } from "@zcode/backlinks";
 import { z } from "zod";
 import { backlinkBrowserInputSchema } from "./browser/index.js";
 import { createBacklinksToolHandlers, type BacklinksHandlerOptions } from "./handlers.js";
@@ -36,6 +36,18 @@ export const BACKLINKS_MCP_TOOLS: Tool[] = [
     },
   },
   {
+    name: "backlinks_worker",
+    description:
+      "Restricted backlink item worker for the backlinks:backlink-publisher subagent. It can heartbeat an existing lease, report one assigned item result, create or poll verification mailboxes, add an approved reciprocal badge, and append source tags. It cannot list, inspect, claim, or release batches. Use only the lease and item IDs supplied by the parent publishing task. Never retry an uncertain website submission.",
+    inputSchema: inputSchema(backlinkWorkerCommandSchema),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
+  {
     name: "backlinks_browser",
     description:
       "Dedicated persistent browser for the backlink-publish and google-session skills. Supports named pages, ARIA/text snapshots, role/label/placeholder/text/CSS/iframe selectors, coordinate click, form filling, file uploads inside the workspace, screenshots and manual login handoff. Name the page on every page action; observe tabs before choosing OAuth popups. Same-page actions serialize; independent pages can run concurrently. Requires trusted ZCode session/trace context. The Chrome profile is isolated by workspace and retained across runs. Never automatically retry a submission with an uncertain outcome. Effects: browser/network and workspace files; supports cancellation.",
@@ -57,6 +69,18 @@ export const BACKLINKS_MCP_TOOLS: Tool[] = [
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,
+    },
+  },
+  {
+    name: "backlinks_cleanup",
+    description:
+      "Release every backlink lease owned by the current ZCode session after its publishing tasks have stopped. The target session is host-injected and cannot be supplied in arguments.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
     },
   },
 ];

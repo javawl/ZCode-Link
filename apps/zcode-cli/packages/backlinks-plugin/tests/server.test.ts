@@ -36,6 +36,18 @@ test("status is read-only, browser starts lazily, and commands receive cancellat
     await handlers.call("backlinks", { action: "batch_list" }, { signal: controller.signal });
     assert.equal(receivedSignal?.aborted, false);
     assert.equal(browserStarts, 0);
+    const heartbeat = await handlers.call(
+      "backlinks_worker",
+      { action: "lease_heartbeat", leaseId: 3 },
+      { signal: controller.signal },
+    );
+    assert.equal(heartbeat.isError, undefined);
+    const forbiddenClaim = await handlers.call(
+      "backlinks_worker",
+      { action: "batch_claim", batchId: 1, itemIds: [2] },
+      {},
+    );
+    assert.equal(forbiddenClaim.isError, true);
     const invalid = await handlers.call("backlinks", { action: "batch_get", batchId: -1 }, {});
     assert.equal(invalid.isError, true);
     const unscoped = await handlers.call("backlinks_browser", { action: "status" }, {});
@@ -105,6 +117,32 @@ test("large backend payloads are saved as workspace artifacts instead of silentl
     const saved = JSON.parse(await readFile(structured.artifactPath, "utf8"));
     assert.equal(saved.data, payload);
     assert.ok(JSON.stringify(result.content).length < 65_000);
+  } finally {
+    await handlers.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cleanup releases leases only for the host-injected current session", async () => {
+  const root = await mkdtemp(join(tmpdir(), "zcode-backlinks-cleanup-"));
+  const sessions: string[] = [];
+  const handlers = createBacklinksToolHandlers({
+    dataBaseDir: root,
+    workspacePath: root,
+    releaseSessionLeases: async (sessionId) => {
+      sessions.push(sessionId);
+    },
+  });
+  try {
+    const unscoped = await handlers.call("backlinks_cleanup", {}, {});
+    assert.equal(unscoped.isError, true);
+    const scoped = await handlers.call(
+      "backlinks_cleanup",
+      {},
+      { requestContext: { session_id: "session-1", trace_id: "trace-1" } },
+    );
+    assert.equal(scoped.isError, undefined);
+    assert.deepEqual(sessions, ["session-1"]);
   } finally {
     await handlers.close();
     await rm(root, { recursive: true, force: true });

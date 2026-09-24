@@ -32,6 +32,7 @@ const state = {
   requests: [] as string[],
   messages: [] as string[],
   opened: [] as string[],
+  stopped: [] as number[],
   settingsPatches: [] as BacklinksSettingsPatch[],
   release: () => {},
 };
@@ -102,6 +103,11 @@ const store = createBacklinksConsoleStore(
       }) as BacklinkBatchDetail,
   },
   publish,
+  async (batchId) => {
+    state.stopped.push(batchId);
+    state.executingIds = state.executingIds.filter((id) => id !== batchId);
+    return [batchId];
+  },
 );
 void store.getState().refresh();
 

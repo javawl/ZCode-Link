@@ -141,6 +141,10 @@ export const commandPayloadSchemas = {
   stop: z.object({
     // 来自 activeWorks；CLI 用它拒绝会误杀后续无关执行的迟到 Stop。
     expectedForegroundExecutionId: z.string().min(1).optional(),
+    // 普通 Composer Stop 缺省只管前台；专用批次入口显式请求整个会话树。
+    scope: z.enum(["foreground", "session"]).optional(),
+    // 资源清理由当前 session 的 MCP request context 绑定，调用方只能选择 server，不能指定 owner。
+    cleanupMcpServers: z.array(z.string().trim().min(1)).max(5).optional(),
   }),
   // compact 是输入型维护命令：idle 时立即执行，busy/held 时进入 FIFO。
   // 因为 admission 与当前 revision 无关，不走 CAS；sourceCommandId 提供幂等边界。

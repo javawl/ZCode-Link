@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { ProviderSettingsFormModel } from "@/lib/providerSettingsFormTypes.js";
 import type { ModelConnectivityResult } from "@zcode/shared";
-import { Loader2Icon, Trash2, Unplug } from "lucide-react";
+import { Loader2Icon, Star, Trash2, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { ModelInputCapabilityBadge } from "@/components/ModelInputCapabilityBadge.js";
 import { Switch } from "@/components/ui/switch.js";
@@ -27,6 +27,8 @@ export function ModelRowInput({
   onDelete,
   onEnabledChange,
   onTest,
+  isDefault = false,
+  onSetDefault,
 }: {
   model: ProviderSettingsFormModel;
   providerId: string;
@@ -44,10 +46,13 @@ export function ModelRowInput({
   onDelete?: () => void;
   onEnabledChange?: (enabled: boolean) => void;
   onTest?: (model: string) => Promise<ModelConnectivityResult>;
+  isDefault?: boolean;
+  onSetDefault?: () => Promise<void>;
 }) {
   const { intl, locale } = useZCodeIntl();
   const { showFeedback } = useProviderDetailFeedback();
   const [isTesting, setIsTesting] = useState(false);
+  const [settingDefault, setSettingDefault] = useState(false);
   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
   const [metadataSaving, setMetadataSaving] = useState(false);
   const metadataSavingRef = useRef(false);
@@ -242,8 +247,30 @@ export function ModelRowInput({
     { value: contextWindowLabel },
   );
 
+  const handleSetDefault = useCallback(async () => {
+    if (!onSetDefault || isDefault || settingDefault) return;
+    setSettingDefault(true);
+    try {
+      await onSetDefault();
+    } catch (error) {
+      showFeedback({
+        key: `model-default:${providerId}:${model.modelId}`,
+        message: intl.formatMessage(
+          { id: "settings.modelProvider.defaultModel.failed" },
+          { reason: error instanceof Error ? error.message : String(error) },
+        ),
+        state: "failure",
+        durationMs: 8_000,
+        dismissible: true,
+        dismissLabel: intl.formatMessage({ id: "common.close" }),
+      });
+    } finally {
+      setSettingDefault(false);
+    }
+  }, [intl, isDefault, model.modelId, onSetDefault, providerId, settingDefault, showFeedback]);
+
   return (
-    <div className="space-y-2 px-3 py-2">
+    <div className="space-y-2 px-3 py-2" data-testid={`model-row-${providerId}-${model.modelId}`}>
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span
@@ -267,6 +294,38 @@ export function ModelRowInput({
             <ModelInputCapabilityBadge />
           ) : null}
         </div>
+        {isDefault ? (
+          <span className="shrink-0 rounded-md bg-warning/10 px-1.5 py-0.5 text-ui-xs text-warning">
+            {intl.formatMessage({ id: "settings.modelProvider.defaultModel.badge" })}
+          </span>
+        ) : null}
+        {onSetDefault ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 p-0"
+            aria-pressed={isDefault}
+            aria-label={intl.formatMessage({
+              id: isDefault
+                ? "settings.modelProvider.defaultModel.current"
+                : "settings.modelProvider.defaultModel.set",
+            })}
+            title={intl.formatMessage({
+              id: isDefault
+                ? "settings.modelProvider.defaultModel.current"
+                : "settings.modelProvider.defaultModel.set",
+            })}
+            disabled={isDefault || settingDefault || !providerEnabled || !model.selectable}
+            onClick={() => void handleSetDefault()}
+          >
+            {settingDefault ? (
+              <Loader2Icon className="size-3.5 animate-spin text-foreground-subtle" />
+            ) : (
+              <Star className={isDefault ? "size-3.5 fill-warning text-warning" : "size-3.5"} />
+            )}
+          </Button>
+        ) : null}
         {shouldShowTestButton ? (
           <Button
             type="button"

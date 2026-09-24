@@ -5,7 +5,12 @@ import {
   createBacklinksConsoleStore,
   filterBacklinkBatches,
 } from "../src/store/backlinksConsoleStore.js";
-import { createBacklinksPublisher } from "../src/lib/backlinksPublish.js";
+import {
+  createBacklinksPublisher,
+  createBacklinksPublishRunRegistry,
+  createBacklinksStopper,
+} from "../src/lib/backlinksPublish.js";
+import { resolveConfiguredDefaultModelSelection } from "../src/lib/modelDefaultSelection.js";
 
 const batch = (id: number, websiteHost = `${id}.example`): BacklinkBatchSummary => ({
   id,
@@ -158,6 +163,34 @@ test("failed publishing and failed refresh retain selection and expose an error"
   assert.equal(store.getState().error, "offline");
 });
 
+test("executing batch stop is single-flight and reports cleanup failures without changing backend truth", async () => {
+  const stopping = deferred<readonly number[]>();
+  let stopCalls = 0;
+  const store = createBacklinksConsoleStore(
+    {
+      listBatches: async () => [{ ...batch(389), executing: true }],
+      getBatch: async () => {
+        throw new Error("not requested");
+      },
+    },
+    async () => {},
+    async () => {
+      stopCalls += 1;
+      return stopping.promise;
+    },
+  );
+  await store.getState().refresh();
+  const first = store.getState().stop(389);
+  await store.getState().stop(389);
+  assert.equal(stopCalls, 1);
+  assert.deepEqual(store.getState().stoppingIds, [389]);
+  stopping.reject(new Error("lease cleanup failed"));
+  await first;
+  assert.deepEqual(store.getState().stoppingIds, []);
+  assert.equal(store.getState().batches[0]?.executing, true);
+  assert.equal(store.getState().error, "lease cleanup failed");
+});
+
 test("late detail result cannot reopen a panel that the user already collapsed", async () => {
   const read = deferred<never>();
   let calls = 0;
@@ -187,6 +220,11 @@ test("publisher creates a new task, uses its trace and routes input to the same 
     workspaceIdentity: "remote:test",
     remoteSessionId: "remote-session",
     clientMode: "web-remote-replayable",
+    modelSelection: {
+      providerId: "newapi",
+      modelId: "deepseek-v4.1-flash",
+      options: { reasoningLevel: "high" },
+    },
     taskService: {
       createTask: async (params) => {
         calls.push({ method: "create", value: params });
@@ -209,14 +247,110 @@ test("publisher creates a new task, uses its trace and routes input to the same 
     workspacePath: "/remote/project",
     workspaceIdentity: "remote:test",
     deferPersistenceUntilFirstPrompt: true,
+    modelSelection: {
+      providerId: "newapi",
+      modelId: "deepseek-v4.1-flash",
+      options: { reasoningLevel: "high" },
+    },
   });
   assert.deepEqual(calls[1]?.value, {
     taskId: "new-task",
     traceId: "task-trace",
     remoteSessionId: "remote-session",
     clientMode: "web-remote-replayable",
-    content: "/backlink-publish 389 99\n请按以上批次号顺序依次发布，仅处理这些批次。",
+    content:
+      "/backlink-publish 389 99\n请按以上批次号顺序依次发布，仅处理这些批次。\n读取批次详情后，必须先调用一次 AskUserQuestion，同时询问“执行范围”和“执行模式”；两项回答齐全且有效前，不得认领条目或开始发布。",
   });
+});
+
+test("publish run registry survives remount and batch stop cancels the whole session scope", async () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  };
+  createBacklinksPublishRunRegistry("remote:test", storage).bind("task-1", [389, 99]);
+  const remounted = createBacklinksPublishRunRegistry("remote:test", storage);
+  const calls: unknown[] = [];
+  const stop = createBacklinksStopper({
+    workspacePath: "/remote/project",
+    workspaceIdentity: "remote:test",
+    registry: remounted,
+    taskService: {
+      stopGeneration: async (input) => {
+        calls.push(input);
+      },
+    },
+  });
+
+  assert.deepEqual(await stop(99), [389, 99]);
+  assert.deepEqual(calls, [
+    {
+      taskId: "task-1",
+      workspacePath: "/remote/project",
+      workspaceIdentity: "remote:test",
+      scope: "session",
+      cleanupMcpServers: ["plugin:backlinks:backlinks"],
+    },
+  ]);
+  await assert.rejects(stop(389), /对应的发布会话/u);
+});
+
+test("default model selection completes the chosen model with its highest reasoning level", () => {
+  const view = {
+    revision: 1,
+    preferredSelection: {
+      providerId: "newapi",
+      modelId: "gemini-3.8-flash-high",
+      options: { reasoningLevel: "high" },
+    },
+    providers: [
+      {
+        providerId: "newapi",
+        providerName: "newapi",
+        config: {},
+        models: [
+          {
+            modelId: "gemini-3.8-flash-high",
+            config: { optionSpecs: { reasoningLevel: { values: ["low", "high"] } } },
+          },
+          {
+            modelId: "deepseek-v4.1-flash",
+            config: { optionSpecs: { reasoningLevel: { values: ["off", "medium"] } } },
+          },
+        ],
+      },
+    ],
+  } as never;
+  assert.deepEqual(resolveConfiguredDefaultModelSelection(view, "newapi", "deepseek-v4.1-flash"), {
+    providerId: "newapi",
+    modelId: "deepseek-v4.1-flash",
+    options: { reasoningLevel: "medium" },
+  });
+  assert.equal(resolveConfiguredDefaultModelSelection(view, "newapi", "missing"), null);
+});
+
+test("single-batch publishing also requires the two scope questions before claiming", async () => {
+  const calls: string[] = [];
+  const publisher = createBacklinksPublisher({
+    workspacePath: "/project",
+    clientMode: "desktop-continuous",
+    taskService: {
+      createTask: async () => ({ taskId: "new-task", traceId: "task-trace" }) as never,
+      sendPrompt: async ({ content }) => {
+        calls.push(content);
+      },
+    },
+    onAccepted: () => {},
+  });
+
+  await publisher([615]);
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!, /^\/backlink-publish 615$/m);
+  assert.match(calls[0]!, /同时询问“执行范围”和“执行模式”/u);
+  assert.match(calls[0]!, /两项回答齐全且有效前，不得认领条目或开始发布/u);
 });
 
 test("publisher does not navigate or silently resend after admission fails", async () => {

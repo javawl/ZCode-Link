@@ -52,9 +52,9 @@ import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE, isOfficialMarketplaceId } from "@zco
 import { ZCODE_CUA_OFFICIAL_PLUGIN_ID, isZCodeCuaInternalFeatureEnabled } from "@zcode/shared";
 import { resolveOfficialPluginRoots } from "./app/bundled-plugins.js";
 import {
+  ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS,
   DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS,
   OFFICIAL_NODE_REPL_HOST_PLUGIN_NAME,
-  OFFICIAL_PLUGIN_DEFINITIONS,
 } from "./app/official-plugin-definitions.js";
 import { getCliStorageRoot, getPluginStorageRoot } from "./app/paths.js";
 import { withPluginStorageLock } from "./lib/plugin-storage-lock.js";
@@ -339,7 +339,7 @@ export function getZCodePluginsOverview(
   // 里挑出 id 落在 suppressedBuiltins 集合内的，映射成 available 形态供 UI 的「恢复」入口使用。
   // 完整 Catalog/cache 仍然保留，restorable 只是 Runtime 抑制态的投影，商店信息直接取定义里的 listing seed。
   const suppressed = new Set(configResult.config.plugins.suppressedBuiltins);
-  const restorableBuiltins: ZCodeAvailablePluginData[] = OFFICIAL_PLUGIN_DEFINITIONS.filter(
+  const restorableBuiltins: ZCodeAvailablePluginData[] = ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS.filter(
     (def) =>
       suppressed.has(`${def.name}@${ZCODE_OFFICIAL_PLUGIN_MARKETPLACE}`) &&
       // computer-use 的恢复入口需要 internal 特性开启（与 restoreBuiltinPluginCore 同口径）。
@@ -417,7 +417,7 @@ function loadPluginListingsById(storageRoot: string): Record<string, PluginStore
   const listings = new Map<string, PluginStoreListing>();
 
   // 没有 marketplace 快照时，bundled official definition 仍是内置插件 listing 的安全回退。
-  for (const definition of OFFICIAL_PLUGIN_DEFINITIONS) {
+  for (const definition of ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS) {
     if (!definition.listing) continue;
     const listing = parseEntryStoreListing({ name: definition.name, ...definition.listing });
     if (listing) {

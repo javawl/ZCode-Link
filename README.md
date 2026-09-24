@@ -48,18 +48,20 @@ Agent CLI 与运行时源码位于 [apps/zcode-cli/](apps/zcode-cli/)，作为�
 ### 桌面版
 
 ```bash
+# LinkAgent 默认入口（推荐）
 pnpm dev:desktop
 
-# 使用测试环境
+# 底层通用入口：调用方需自行隔离数据目录
 pnpm dev:desktop:test
+pnpm dev:desktop:prod
 ```
 
-`pnpm dev:desktop` 默认等同于 `pnpm dev:desktop:prod`，使用生产服务配置。启动脚本会准备本地运行资源、构建桌面 Agent，再启动 Electron 和源码监听。
+`pnpm dev:desktop` 使用测试服务配置，并把 LinkAgent 的 Desktop、Host、Agent 配置及 Electron 数据固定到 `~/.zcode-link-dev-home`，不会读取普通 ZCode 的 `~/.zcode` 配置。启动脚本会准备本地运行资源、构建桌面 Agent，再启动 Electron 和源码监听。
 
-需要独立开发数据目录时，可设置 `ZCODE_DATA_BASE_DIR`。例如在 macOS / Linux 中：
+需要另一个 LinkAgent 开发空间时，使用专用变量指定绝对路径：
 
 ```bash
-ZCODE_DATA_BASE_DIR="$HOME/.zcode-dev-home" pnpm dev:desktop:test
+LINKAGENT_DEV_DATA_BASE_DIR="/absolute/path/to/linkagent-home" pnpm dev:desktop
 ```
 
 ### 远程功能（SSH/WSL）

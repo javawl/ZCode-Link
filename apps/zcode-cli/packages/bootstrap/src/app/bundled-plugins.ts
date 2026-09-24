@@ -21,7 +21,7 @@ import {
   renameOfficialPluginCachePath,
 } from "./official-plugin-cache-fs.js";
 import {
-  OFFICIAL_PLUGIN_DEFINITIONS,
+  ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS,
   type OfficialPluginDefinition,
 } from "./official-plugin-definitions.js";
 import { writeOfficialPluginRuntimeManifest } from "./official-plugin-runtime.js";
@@ -266,7 +266,7 @@ function resolveSeaSeedSource(): OfficialPluginSeedSource | undefined {
 
   const manifest = readSeaManifest(sea);
   if (!manifest) return undefined;
-  const plugins = OFFICIAL_PLUGIN_DEFINITIONS.flatMap((definition) => {
+  const plugins = ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS.flatMap((definition) => {
     const plugin = manifest.plugins.find(
       (item) =>
         item.marketplace === OFFICIAL_PLUGIN_MARKETPLACE &&
@@ -292,7 +292,7 @@ function resolveSeaSeedSource(): OfficialPluginSeedSource | undefined {
 }
 
 function resolveFilesystemSeedSource(): OfficialPluginSeedSource | undefined {
-  const plugins = OFFICIAL_PLUGIN_DEFINITIONS.flatMap((definition) => {
+  const plugins = ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS.flatMap((definition) => {
     const rootPath = resolveFilesystemPluginRoot(definition);
     if (!rootPath) return [];
     const files = collectFilesystemPluginFiles(rootPath, definition);

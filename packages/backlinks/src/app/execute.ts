@@ -9,6 +9,7 @@ export async function executeBacklinksCommand(
   runtime: BacklinksRuntime,
   input: unknown,
   signal?: AbortSignal,
+  context?: { ownerKey?: string },
 ): Promise<BacklinksCommandResult> {
   const parsed = backlinksCommandSchema.safeParse(input);
   if (!parsed.success)
@@ -29,7 +30,9 @@ export async function executeBacklinksCommand(
       return { action, summary: `${data.batch.name}：${data.items.length} 个条目`, data };
     }
     case "batch_claim": {
-      const data = await runtime.claim(command.batchId, command.itemIds, signal);
+      const data = context?.ownerKey
+        ? await runtime.claimForOwner(command.batchId, command.itemIds, context.ownerKey, signal)
+        : await runtime.claim(command.batchId, command.itemIds, signal);
       return { action, summary: `租约 ${data.leaseId} 已认领 ${data.items.length} 个条目`, data };
     }
     case "lease_heartbeat": {

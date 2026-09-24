@@ -1,7 +1,11 @@
 /* eslint-disable max-lines -- App 当前集中编排 workspace 级状态、导航、Git 派生数据和 shell wiring；已将新增 side pane memory 桥接抽出，剩余拆分需要按 shell 边界单独重构。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type { GitChangeSourceId, WorkspacePurpose } from "@zcode/shared";
+import {
+  LINK_AGENT_PRODUCT_PROFILE,
+  type GitChangeSourceId,
+  type WorkspacePurpose,
+} from "@zcode/shared";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { getVisibleTaskMetas, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { useTaskQueryCacheStore } from "@/store/taskQueryCacheStore.js";
@@ -285,7 +289,9 @@ export function App({
   useOffPeakTaskNotifications({
     offPeakTaskService: services.offPeakTaskService,
     platform,
-    enabled: Boolean(notificationEnabled && isDesktop),
+    enabled: Boolean(
+      LINK_AGENT_PRODUCT_PROFILE.features.offPeak && notificationEnabled && isDesktop,
+    ),
     formatMessage: intl.formatMessage,
   });
   const lastHandledDraftSidePaneCloseRef = useRef({
@@ -656,6 +662,7 @@ export function App({
     setFileChangeFindState((state) => navigateTaskFindSelection(state, query, activeIndex));
   }, []);
   const handleOpenQuickPick = useCallback(() => {
+    if (!LINK_AGENT_PRODUCT_PROFILE.features.commandCenter) return;
     setIsQuickPickOpen((open) => !open);
   }, []);
   const openFeedbackSubmit = useFeedbackStore((state) => state.openSubmit);
@@ -666,6 +673,7 @@ export function App({
   }, [platform]);
 
   useEffect(() => {
+    if (!LINK_AGENT_PRODUCT_PROFILE.features.feedback) return;
     // 内置反馈中心合并了"提交反馈 / 我的反馈"两个 Tab，
     // 老的 OpenTicketsPanel IPC 仍然兼容（直接打开列表），未来如果还需要单独入口可以复用。
     const disposeFeedbackDialog = platform.onOpenFeedbackDialog?.(() => {
@@ -839,11 +847,13 @@ export function App({
     onExitSettings: handleNavigateToTaskMain,
   });
   const handleNavigateToAutomationsMain = useCallback((target: AutomationsNavigationTarget) => {
+    if (!LINK_AGENT_PRODUCT_PROFILE.features.automations) return;
     setOpenAutomationId(target.automationId ?? null);
     setOpenAutomationTab(target.automationTab ?? null);
     setWorkspaceMainView("automations");
   }, []);
   const handleNavigateToPluginStoreMain = useCallback(() => {
+    if (!LINK_AGENT_PRODUCT_PROFILE.features.pluginStore) return;
     // 通用入口没有 scope 上下文，默认回到 User；Settings 显式带 scope 的入口会在
     // 导航完成后覆盖这次默认值，避免沿用上一次 Workspace scope。
     setPluginStoreReturnScopeKey("user");
@@ -876,6 +886,7 @@ export function App({
   });
   const handleOpenPluginStoreForScope = useCallback(
     (_target: PluginStoreOpenTarget = {}) => {
+      if (!LINK_AGENT_PRODUCT_PROFILE.features.pluginStore) return;
       // Workspace Marketplace 已收敛为全局入口。兼容旧事件中的 Workspace key，但返回
       // 目标统一归一为 User，避免旧 sessionStorage/同窗口事件把设置页带回失效 scope。
       const returnScopeKey = "user";
@@ -890,7 +901,10 @@ export function App({
     [handleOpenPluginStore, workspaceMainView],
   );
   useEffect(
-    () => addPluginStoreOpenListener(handleOpenPluginStoreForScope),
+    () =>
+      LINK_AGENT_PRODUCT_PROFILE.features.pluginStore
+        ? addPluginStoreOpenListener(handleOpenPluginStoreForScope)
+        : undefined,
     [handleOpenPluginStoreForScope],
   );
   const handleSelectAdjacentConversation = useCallback(
@@ -1106,22 +1120,26 @@ export function App({
 
   return (
     <>
-      <CommandCenterDialog
-        open={isQuickPickOpen}
-        commands={quickPickCommands}
-        workspaceAbsPath={workspaceAbsPath}
-        workspaceIdentity={workspaceIdentity}
-        activeTaskId={activeTaskId}
-        activeTaskChangeSummary={activeTaskChangeSummary}
-        workspaceTabs={commandCenterWorkspaceTabs}
-        onOpenChange={setIsQuickPickOpen}
-        onSelectTask={handleSelectTask}
-        onSearchResultHighlightRequest={handleSearchResultHighlightRequest}
-        onOpenCodeViewer={handleOpenCodeViewerIfWritable}
-      />
+      {LINK_AGENT_PRODUCT_PROFILE.features.commandCenter ? (
+        <CommandCenterDialog
+          open={isQuickPickOpen}
+          commands={quickPickCommands}
+          workspaceAbsPath={workspaceAbsPath}
+          workspaceIdentity={workspaceIdentity}
+          activeTaskId={activeTaskId}
+          activeTaskChangeSummary={activeTaskChangeSummary}
+          workspaceTabs={commandCenterWorkspaceTabs}
+          onOpenChange={setIsQuickPickOpen}
+          onSelectTask={handleSelectTask}
+          onSearchResultHighlightRequest={handleSearchResultHighlightRequest}
+          onOpenCodeViewer={handleOpenCodeViewerIfWritable}
+        />
+      ) : null}
       {/* 反馈是应用级能力，必须固定走本机 base host；SSH session 连接中或断开时，
           workspace-scoped services 会切成断连代理，不能让反馈提交跟随远程 session 失效。 */}
-      <FeedbackHost feedbackService={baseFeedbackService} platform={platform} />
+      {LINK_AGENT_PRODUCT_PROFILE.features.feedback ? (
+        <FeedbackHost feedbackService={baseFeedbackService} platform={platform} />
+      ) : null}
       <WorkspaceShellLayout
         services={services}
         workspaceReadOnlyReason={workspaceReadOnlyReason}

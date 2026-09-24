@@ -2,7 +2,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { backlinksCommandSchema, type BacklinksSettingsSnapshot } from "@zcode/backlinks";
+import {
+  backlinkWorkerCommandSchema,
+  backlinksCommandSchema,
+  type BacklinksSettingsSnapshot,
+} from "@zcode/backlinks";
 import { createBacklinksRuntime, executeBacklinksCommand } from "@zcode/backlinks/node";
 import { z } from "zod";
 import { backlinkBrowserInputSchema, createBacklinkBrowserRuntime } from "./browser/index.js";
@@ -26,7 +30,12 @@ export interface BacklinksHandlerOptions {
   workspacePath?: string;
   env?: Record<string, string | undefined>;
   getSettings?: () => Promise<BacklinksSettingsSnapshot>;
-  execute?: (input: Command, signal?: AbortSignal) => Promise<Record<string, unknown>>;
+  execute?: (
+    input: Command,
+    signal?: AbortSignal,
+    requestContext?: BacklinksRequestContext,
+  ) => Promise<Record<string, unknown>>;
+  releaseSessionLeases?: (sessionId: string, signal?: AbortSignal) => Promise<void>;
   createBrowser?: (options: BrowserOptions) => BrowserRuntime;
 }
 
@@ -48,7 +57,15 @@ export function createBacklinksToolHandlers(options: BacklinksHandlerOptions = {
     },
   });
   const execute =
-    options.execute ?? ((input, signal) => executeBacklinksCommand(runtime, input, signal));
+    options.execute ??
+    ((input, signal, requestContext) =>
+      executeBacklinksCommand(runtime, input, signal, {
+        ...(requestContext?.session_id ? { ownerKey: requestContext.session_id } : {}),
+      }));
+  const releaseSessionLeases =
+    options.releaseSessionLeases ??
+    ((sessionId: string, signal?: AbortSignal) =>
+      runtime.releaseOwnedLeasesForOwner(sessionId, signal));
   const getSettings = options.getSettings ?? (() => runtime.getSettings());
   const shutdownController = new AbortController();
   let browser: Promise<BrowserRuntime> | undefined;
@@ -131,8 +148,25 @@ export function createBacklinksToolHandlers(options: BacklinksHandlerOptions = {
           }
           if (name === "backlinks") {
             const command = backlinksCommandSchema.parse(input);
-            const result = await execute(command, signal);
+            const result = await execute(command, signal, requestContext);
             return toBacklinksMcpResult({ ...result }, artifactDirectory);
+          }
+          if (name === "backlinks_worker") {
+            const command = backlinkWorkerCommandSchema.parse(input);
+            const result = await execute(command, signal, requestContext);
+            return toBacklinksMcpResult({ ...result }, artifactDirectory);
+          }
+          if (name === "backlinks_cleanup") {
+            z.object({}).strict().parse(input ?? {});
+            const sessionId = requestContext.session_id?.trim();
+            if (!sessionId) {
+              throw new Error("backlinks_cleanup requires a host-injected session context.");
+            }
+            await releaseSessionLeases(sessionId, signal);
+            return toBacklinksMcpResult(
+              { released: true, sessionId },
+              artifactDirectory,
+            );
           }
           if (name === "backlinks_browser") {
             const command = backlinkBrowserInputSchema.parse(input);

@@ -42,6 +42,7 @@ import {
 } from "@zcode/contracts";
 import {
   DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
+  LINK_AGENT_PRODUCT_PROFILE,
   ZCODE_SESSION_RUNTIME_PREFERENCES_REQUEST_TIMEOUT_MS,
   zcodeProtocolErrorCodes,
   zcodeProtocolMethods,
@@ -2701,7 +2702,8 @@ export async function setMode(context: ZCodeProtocolAgentServerContext, rawParam
   const params = parseParams(zcodeSessionSetModeParamsSchema, rawParams);
   const record = requireSession(context, params.sessionId);
   assertExpectedRevision(record, params.expectedRevision);
-  await record.app.setMode(params.mode);
+  // 协议仍兼容旧客户端的 setMode 命令，但 LinkAgent 产品不允许它降级固定权限。
+  await record.app.setMode(LINK_AGENT_PRODUCT_PROFILE.agentPermission.mode);
   return await afterStateMutation(context, record, "mode_changed");
 }
 
@@ -3325,7 +3327,7 @@ async function createRecord(
     eventStore,
     resume,
     runtimeConfig: {
-      mode: "mode" in params ? params.mode : undefined,
+      mode: LINK_AGENT_PRODUCT_PROFILE.agentPermission.mode,
       modelSelection: "model" in params ? toRuntimeModelSelection(initialModel) : undefined,
       parentSessionId,
       taskType,

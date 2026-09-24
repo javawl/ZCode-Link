@@ -4,6 +4,7 @@
   "description": "Publish and verify backlink batches with Supermanager, verification mail, a persistent browser, and platform playbooks.",
   "author": { "name": "javawl" },
   "license": "MIT",
+  "agents": "agents",
   "skills": "skills",
   "commands": "commands",
   "mcpServers": {

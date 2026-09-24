@@ -5,6 +5,7 @@ import type { ProviderSettingsView } from "@zcode/services";
 import { useServices } from "@/hooks/useServices.js";
 import { logger } from "@/logger.js";
 import { useProviderSettingsServiceView } from "@/hooks/useProviderSettingsView.js";
+import { useModelSelectionServiceView } from "@/hooks/useModelSelectionView.js";
 import {
   projectProviderSettingsViewToFormProviders,
   resolveProviderSettingsFormProviders,
@@ -14,6 +15,7 @@ import { persistProviderDisplayOrder } from "@/lib/providerDisplayOrderPersisten
 import { persistPersonalProviderDeletion } from "@/lib/providerPersonalPersistence.js";
 import { persistPersonalProvider } from "@/lib/providerPersonalSave.js";
 import type { ProviderOrderView } from "@/lib/modelProviderOrdering.js";
+import { resolveConfiguredDefaultModelSelection } from "@/lib/modelDefaultSelection.js";
 
 export function useModelProviders(target: {
   workspacePath: string;
@@ -25,8 +27,11 @@ export function useModelProviders(target: {
   /** 没有本地 workspace 时展示给用户的本地化错误文案。 */
   connectivityUnavailableMessage?: string;
 }) {
-  const { providerSettingsService } = useServices();
+  const { providerSettingsService, modelSelectionService } = useServices();
   const providerSettingsRead = useProviderSettingsServiceView(providerSettingsService);
+  const modelSelectionRead = useModelSelectionServiceView(modelSelectionService);
+  const modelSelectionView =
+    modelSelectionRead.state.status === "ready" ? modelSelectionRead.state.view : null;
   const providerSettingsView =
     providerSettingsRead.state.status === "ready" ? providerSettingsRead.state.view : null;
   const effectiveModelProviders = useMemo(
@@ -179,6 +184,20 @@ export function useModelProviders(target: {
     [commitProviderSettingsView, providerSettingsService],
   );
 
+  const setDefaultModel = useCallback(
+    async (providerId: string, modelId: string) => {
+      if (!modelSelectionView) throw new Error("模型选择仍在加载，请稍后重试");
+      const selection = resolveConfiguredDefaultModelSelection(
+        modelSelectionView,
+        providerId,
+        modelId,
+      );
+      if (!selection) throw new Error("所选模型当前不可用");
+      return await modelSelectionService.setConfiguredDefault(selection);
+    },
+    [modelSelectionService, modelSelectionView],
+  );
+
   const testModelConnectivity = useCallback(
     async (providerId: string, modelId: string): Promise<ModelConnectivityResult> => {
       const connectivityWorkspacePath = target.connectivityWorkspacePath?.trim();
@@ -231,6 +250,8 @@ export function useModelProviders(target: {
     deleteProvider,
     reorderProviderModels,
     saveDisplayOrder,
+    setDefaultModel,
+    defaultModelSelection: modelSelectionView?.preferredSelection ?? null,
     testModelConnectivity,
     providerSettingsView,
   };

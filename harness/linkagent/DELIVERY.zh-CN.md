@@ -76,18 +76,15 @@ node --test packages/desktop/test/linkagentStartup.e2e.mjs
 
 ## 本次运行方式及边界
 
-当前开发客户端使用独立目录 `~/.zcode-link-dev-home`。再次从源码启动时，在仓库根目录、指定 Node/pnpm 环境中执行：
+当前开发客户端使用独立目录 `~/.zcode-link-dev-home`。再次从源码启动时，在仓库根目录执行：
 
 ```sh
-ZCODE_DATA_BASE_DIR="$HOME/.zcode-link-dev-home" \
-ZCODE_DESKTOP_HOME_DIR="$HOME/.zcode-link-dev-home" \
-ZCODE_HOME="$HOME/.zcode-link-dev-home/.zcode" \
-ZCODE_DESKTOP_USER_DATA_DIR="$HOME/.zcode-link-dev-home/electron-user-data" \
-ZCODE_DISABLE_FIXED_REMOTE_DEBUGGING_PORT=1 \
-pnpm dev:desktop:test
+pnpm dev:desktop
 ```
 
-类型检查会生成 desktop host 中间产物。检查完成后重新启动时应使用完整 `dev:desktop:test` 入口，它会清理旧 `out` 并等待新构建完成，不直接复用陈旧构建标记。
+这个入口会覆盖父 shell 中可能残留的通用 ZCode 数据路径，把 Desktop、Host、Agent 配置与 Electron userData 固定到同一个 LinkAgent 独立根；不会复制、删除或迁移 `~/.zcode` 与 `~/.zcode-link-dev-home`。如需另建一个开发空间，可设置绝对路径 `LINKAGENT_DEV_DATA_BASE_DIR` 后再运行同一命令。
+
+类型检查会生成 desktop host 中间产物。检查完成后重新启动时应使用完整 `dev:desktop` 入口，它会清理旧 `out` 并等待新构建完成，不直接复用陈旧构建标记。
 
 变更涉及 UI、Desktop、Shared 菜单及 Web 标题/图标。账号事实仍由 OAuthService 管理，模型事实仍由既有 ProviderSettingsService / ModelSelectionService 管理；外链任务 owner、租约和 Desktop/Web 交付语义未变。
 
@@ -95,7 +92,9 @@ pnpm dev:desktop:test
 
 为了兼容现有迁移功能，保留 `@zcode/*` 包名、内部协议、环境变量、数据格式、第三方供应商品牌与原版权归属。没有修改线上域名、canonical 或服务端鉴权。
 
-本地源码可构建 LinkAgent 3.14.0 的 macOS arm64/x64 DMG 与 Windows x64/arm64 NSIS 安装包。当前安装包未签名或公证，也未验证 Windows 实机安装、真实模型请求与真实外链发布。LinkAgent 独立更新渠道尚未配置。
+先前发布的 LinkAgent 3.14.0 提供 macOS arm64/x64 DMG 与 Windows x64/arm64 NSIS 安装包；它们未签名或公证，也未验证 Windows 实机安装、真实模型请求与真实外链发布。该版本没有独立更新渠道。
+
+3.15.0 的当前源码已将正式版更新源独立绑定到 `javawl/ZCode-Link` GitHub Releases，并能合并四架构更新元数据；本地测试包仍未签名、公证或公开发布。3.14.0 客户端不具备自动升级能力，须在取得签名凭据并发布正式包后手动安装一次。后续验收与发布门槛见 [在线更新规格](./UPDATE-SPEC.zh-CN.md)。
 
 ## 发布首条输入外键错误修复
 

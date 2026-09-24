@@ -84,12 +84,23 @@ export interface BacklinksRegistrationPort {
 export interface BacklinksLifecyclePort {
   releaseOwnedLeases(signal?: AbortSignal): Promise<void>;
 }
+/** Session ownership is host-injected metadata; model tool arguments never choose another owner. */
+export interface BacklinksSessionLeasePort {
+  claimForOwner(
+    batchId: number,
+    itemIds: readonly number[] | undefined,
+    ownerKey: string,
+    signal?: AbortSignal,
+  ): Promise<BacklinkLeaseClaim>;
+  releaseOwnedLeasesForOwner(ownerKey: string, signal?: AbortSignal): Promise<void>;
+}
 export type BacklinksRuntime = BacklinkBatchOperations &
   MailboxOperations &
   MailboxStatusPort &
   BacklinksSettingsPort &
   BacklinksRegistrationPort &
-  BacklinksLifecyclePort;
+  BacklinksLifecyclePort &
+  BacklinksSessionLeasePort;
 export interface BacklinksConfigPort extends BacklinksSettingsPort {
   readEffective(): Promise<EffectiveBacklinksConfig>;
 }

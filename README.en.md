@@ -48,18 +48,20 @@ The default `bootstrap` skips remote asset preparation and is suitable for local
 ### Desktop
 
 ```bash
+# Default LinkAgent entry point (recommended)
 pnpm dev:desktop
 
-# Use the test environment
+# Generic low-level entry points; the caller must isolate their data directories
 pnpm dev:desktop:test
+pnpm dev:desktop:prod
 ```
 
-`pnpm dev:desktop` defaults to `pnpm dev:desktop:prod` and uses production service configuration. The startup script prepares local runtime assets, builds the desktop Agent, then starts Electron and source watchers.
+`pnpm dev:desktop` uses the test service configuration and pins LinkAgent Desktop, Host, Agent configuration, and Electron data to `~/.zcode-link-dev-home`. It does not read the regular ZCode configuration in `~/.zcode`. The startup script prepares local runtime assets, builds the desktop Agent, then starts Electron and source watchers.
 
-Set `ZCODE_DATA_BASE_DIR` to use a separate development data directory. For example, on macOS / Linux:
+To use another LinkAgent development space, set the dedicated variable to an absolute path:
 
 ```bash
-ZCODE_DATA_BASE_DIR="$HOME/.zcode-dev-home" pnpm dev:desktop:test
+LINKAGENT_DEV_DATA_BASE_DIR="/absolute/path/to/linkagent-home" pnpm dev:desktop
 ```
 
 ### Web Development

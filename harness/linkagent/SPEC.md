@@ -8,9 +8,24 @@
 - 账号连接是设置中的可选能力；主动打开的登录页提供返回主界面入口。账号过期不强制切换到登录页。首次职业/偏好引导只由用户主动打开，不阻塞工作区。
 - 客户端名称为 LinkAgent；开发与预览实例分别显示 LinkAgent Dev / LinkAgent Preview。主窗口、启动图、关于页、菜单、应用包和图标一致。新的应用安装身份避免覆盖原版 ZCode。
 - 用 imagegen 生成全新图标，保存 PNG 母版及生成提示词，派生 macOS ICNS、Windows ICO、Linux 多尺寸 PNG 并接入实际运行窗口。
-- LinkAgent 尚无独立更新渠道，禁用原版 ZCode 的自动更新和强制更新入口，避免将原版客户端装回改名后的应用。
+- LinkAgent 正式版只从明确绑定的 `javawl/ZCode-Link` GitHub Releases 检查桌面更新；不得请求原版 ZCode 的更新清单或强制升级接口。开发版和 Preview 身份不自动更新。
 
 ## 所有者与边界
+
+### 开发数据隔离与启动入口
+
+- `pnpm dev:desktop` 是 LinkAgent 桌面开发的唯一默认入口。该入口必须在启动 Electron、Host 和 Agent 前，把数据根固定为 `~/.zcode-link-dev-home`，并由同一个根派生 `ZCODE_DATA_BASE_DIR`、`ZCODE_DESKTOP_HOME_DIR`、`ZCODE_HOME` 与 `ZCODE_DESKTOP_USER_DATA_DIR`。
+- LinkAgent 启动入口是开发数据根的唯一所有者。它不得继承通用 ZCode 的 `ZCODE_DATA_BASE_DIR` 等路径覆盖，避免读取 `~/.zcode` 中的项目、任务、模型与设置；需要另一个 LinkAgent 开发空间时，只能通过 `LINKAGENT_DEV_DATA_BASE_DIR` 指定绝对路径。
+- 启动隔离只改变进程读取位置，不复制、迁移、清空或合并 LinkAgent 与 ZCode 的任何数据。已有 `~/.zcode-link-dev-home` 必须原位复用。
+- `dev:desktop:test` 与 `dev:desktop:prod` 保留为明确的底层环境入口，供隔离 E2E 或显式开发场景注入自己的数据目录；它们不是 LinkAgent 的日常默认启动命令。
+
+```text
+pnpm dev:desktop
+  → LinkAgent 启动入口（数据根唯一所有者）
+  → ~/.zcode-link-dev-home
+     ├─ .zcode/v2/{setting,provider_config,backlinks,tasks-index}
+     └─ electron-user-data
+```
 
 ### 客户端去商业化
 
@@ -53,6 +68,7 @@ sequenceDiagram
 4. 外链设置与控制台可访问；本次不向真实平台发布，不使用真实密钥测试。
 5. 标题、菜单、关于页、新图标与开发应用包可实际检查；品牌 identity 测试覆盖三个桌面平台的命名。
 6. 执行相关单测、桌面 E2E、pnpm typecheck、pnpm lint 和 architecture:check --changed；分别记录已有失败与本次新增问题。
+7. 即使父 shell 已设置指向普通 ZCode 的路径变量，`pnpm dev:desktop` 仍只解析到 LinkAgent 独立目录；显式的 `LINKAGENT_DEV_DATA_BASE_DIR` 必须是绝对路径，并能让四个运行时路径保持同根。
 
 ## 交付边界
 

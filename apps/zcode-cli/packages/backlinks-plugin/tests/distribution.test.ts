@@ -50,7 +50,9 @@ test(
       assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [
         "backlinks",
         "backlinks_browser",
+        "backlinks_cleanup",
         "backlinks_status",
+        "backlinks_worker",
       ]);
       const status = await client.callTool({ name: "backlinks_status", arguments: {} });
       assert.equal(status.isError, undefined);

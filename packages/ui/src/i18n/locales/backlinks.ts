@@ -1,12 +1,14 @@
 export const backlinksEn: Record<string, string> = {
   "backlinks.sidebarTab": "Batches",
+  "backlinks.runsTab": "Runs",
   "backlinks.selectVisibleShort": "Select visible",
   "backlinks.publishShort": "Publish",
+  "backlinks.stopShort": "Stop",
   "backlinks.pendingShort": "To do",
   "backlinks.executedShort": "Done",
   "backlinks.failedShort": "Failed",
   "backlinks.settingsDescription":
-    "Browse and publish batches from the Publish batches tab next to Projects in the sidebar.",
+    "Configure the batch service, verification mailbox, and dedicated publishing browser.",
   "backlinks.agentTokenHelp":
     "Use the Supermanager Agent Token, not a model API key. Paste the token only, without the Bearer prefix.",
   "backlinks.title": "Backlink publishing",
@@ -23,6 +25,8 @@ export const backlinksEn: Record<string, string> = {
   "backlinks.publishSelected": "Publish selected ({count})",
   "backlinks.publish": "Publish batch",
   "backlinks.publishing": "Starting task…",
+  "backlinks.stop": "Stop publishing",
+  "backlinks.stopping": "Stopping…",
   "backlinks.executing": "Executing",
   "backlinks.pending": "Pending",
   "backlinks.executed": "Completed",
@@ -70,12 +74,14 @@ export const backlinksEn: Record<string, string> = {
 
 export const backlinksZh: Record<string, string> = {
   "backlinks.sidebarTab": "发布批次",
+  "backlinks.runsTab": "运行记录",
   "backlinks.selectVisibleShort": "全选当前列表",
   "backlinks.publishShort": "发布",
+  "backlinks.stopShort": "停止",
   "backlinks.pendingShort": "待",
   "backlinks.executedShort": "成",
   "backlinks.failedShort": "败",
-  "backlinks.settingsDescription": "请在侧栏「项目」旁的「发布批次」中查看与发布批次。",
+  "backlinks.settingsDescription": "配置批次服务、验证邮箱和发布专用浏览器。",
   "backlinks.agentTokenHelp":
     "请使用 Supermanager 的 Agent Token，不是模型 API Key；只粘贴令牌，无需 Bearer 前缀。",
   "backlinks.title": "外链发布",
@@ -91,6 +97,8 @@ export const backlinksZh: Record<string, string> = {
   "backlinks.publishSelected": "批量发布 ({count})",
   "backlinks.publish": "发布此批次",
   "backlinks.publishing": "正在创建任务…",
+  "backlinks.stop": "停止发布",
+  "backlinks.stopping": "停止中…",
   "backlinks.executing": "执行中",
   "backlinks.pending": "待处理",
   "backlinks.executed": "已完成",

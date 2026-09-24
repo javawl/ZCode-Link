@@ -6,6 +6,7 @@ import {
   V4_DRAFT_SCOPE_ROOT,
   type V4ComposerDraft,
 } from "@/v4/composer/composerDraftStore.js";
+import { applyLinkAgentPermissionPolicy } from "@/v4/composer/linkAgentPermissionPolicy.js";
 
 /** 普通新任务与首次分享导入共用初始化；保留 Recent 原意图，由公共 View 解析有效选择。 */
 export function initializeNewTaskDraft(
@@ -15,16 +16,15 @@ export function initializeNewTaskDraft(
   view: ModelSelectionView,
 ): V4ComposerDraft {
   const recent = readComposerRecent(workspacePath, workspaceIdentity);
-  return {
+  return applyLinkAgentPermissionPolicy({
     ...draft,
     initializeFromNewTask: undefined,
-    mode: recent?.mode === "plan" ? "build" : (recent?.mode ?? "build"),
-    planEnabled: false,
+    mode: recent?.mode,
     modelSelection:
       recent?.modelSelection ??
       resolveDraftInitialModelSelection(view, null).selection ??
       undefined,
-  };
+  });
 }
 
 /** 在激活首次导入的 Session 前调用；不依赖模型可执行，也不把原新任务正文带入分享。 */
@@ -44,12 +44,17 @@ export function seedImportedSessionDraft(result: {
     workspaceIdentity,
     sessionId,
     root?.mode
-      ? {
+      ? applyLinkAgentPermissionPolicy({
           text: "",
           mode: root.mode,
           planEnabled: root.planEnabled ?? false,
           modelSelection: root.modelSelection,
-        }
-      : { text: "", initializeFromNewTask: true },
+          updatedAt: Date.now(),
+        })
+      : applyLinkAgentPermissionPolicy({
+          text: "",
+          initializeFromNewTask: true,
+          updatedAt: Date.now(),
+        }),
   );
 }

@@ -3,17 +3,28 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 import { withPinnedNodePath } from "./mise-toolchain-env.mjs";
+import { createLinkAgentDesktopEnvOverrides } from "./linkagent-desktop-env.mjs";
 import { quoteArgsForWindowsShell } from "./spawn-command.mjs";
 
 const requestedEnv = process.argv[2]?.trim().toLowerCase();
 const agentBytecode = process.argv.slice(3).includes("--agent-bytecode");
+const linkAgentDesktop = process.argv.slice(3).includes("--linkagent");
 if (requestedEnv !== "test" && requestedEnv !== "production") {
-  console.error("Usage: node scripts/dev-desktop-env.mjs <test|production> [--agent-bytecode]");
+  console.error(
+    "Usage: node scripts/dev-desktop-env.mjs <test|production> [--agent-bytecode] [--linkagent]",
+  );
   process.exit(1);
 }
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const linkAgentEnvOverrides = linkAgentDesktop
+  ? createLinkAgentDesktopEnvOverrides(process.env)
+  : {};
+
+if (linkAgentDesktop) {
+  console.info(`[linkagent] data root: ${linkAgentEnvOverrides.ZCODE_DATA_BASE_DIR}`);
+}
 
 function run(command, args) {
   return new Promise((resolveRun, rejectRun) => {
@@ -25,6 +36,7 @@ function run(command, args) {
       env: withPinnedNodePath(
         {
           ...process.env,
+          ...linkAgentEnvOverrides,
           ZCODE_ENV: requestedEnv,
           ZCODE_DESKTOP_AGENT_BYTECODE: agentBytecode ? "1" : "0",
         },

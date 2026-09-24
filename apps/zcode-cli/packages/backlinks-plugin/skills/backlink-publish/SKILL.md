@@ -50,46 +50,102 @@ user-invocable: true
 对每个确定批次调用 `{"action":"batch_get","batchId":123}`，读取完整网站资料包、anchors、条目与发布记录。
 
 - **排除已发布**：`publishStatus` 为 `submitted` / `live`、`publishedUrl` 非空，以及同批次同 `sourceId` 的关联条目，作为“已有发布记录，未执行”单列。不要覆盖它们已有的结果。
-- **默认范围**：本批次的待发布和 `retryable` 条目。用户指定手选、某些 item 或全部时沿用；“全部”也不能覆盖去重与未知提交保护。`manual_required` 只有在用户已处理阻碍、核对之前是否提交并明确选择条目后才能再次认领。
-- **智能匹配（默认）**：勘察后能匹配六类 playbook 才发布；未知类型写 `skipped`，`skipReason` 为“类型不识别，智能匹配模式下跳过”。
+- **可执行范围**：本批次的待发布和 `retryable` 条目。“全部可执行”也不能覆盖去重与未知提交保护。`manual_required` 只有在用户已处理阻碍、核对之前是否提交并在后续新请求中明确选择条目后才能再次认领。
+- **智能匹配（推荐）**：勘察后能匹配六类 playbook 才发布；未知类型写 `skipped`，`skipReason` 为“类型不识别，智能匹配模式下跳过”。
 - **全部尝试**：已知类型仍用 playbook；未知类型走通用单条目流程，不因为类型未知而跳过。
 
-仅在范围或模式确实影响结果且用户没有指定时，用 `AskUserQuestion` 一次收集缺失偏好。已明确批次、但用户跳过可选模式问题时，可以说明采用智能匹配和待发布范围后继续；用户取消执行或批次选择仍应停止。无人值守任务沿用任务文本中的范围和模式，未指定时使用上述默认值，不扩大范围。
+读取全部所选批次详情后，**每次交互式发布都必须调用一次 ZCode 原生 `AskUserQuestion`，并在同一次调用中同时显示下面两个问题**。批次号只确定批次，不能解释为用户已选择范围或模式；侧栏按钮、单批、批量和带参数的 `/backlink-publish` 都不得跳过。描述中的真实数量必须根据刚读取的详情填写，不能照抄示例数字。
+
+```json
+{
+  "questions": [
+    {
+      "question": "本次执行哪些条目范围？",
+      "header": "执行范围",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "全部可执行（推荐）",
+          "description": "处理待发布与可重试失败；排除已发布、重复来源和待人工核对条目。需要手选时使用客户端自带的“其他”，输入逗号分隔的条目 ID。"
+        },
+        {
+          "label": "仅待发布",
+          "description": "只处理当前 pending 条目；排除失败记录、已发布、重复来源和待人工核对条目。"
+        }
+      ]
+    },
+    {
+      "question": "本次采用哪种执行模式？",
+      "header": "执行模式",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "智能匹配（推荐）",
+          "description": "只发布能匹配现有六类 playbook 的站点，未知类型如实跳过。"
+        },
+        {
+          "label": "全部尝试",
+          "description": "已知类型使用 playbook，未知类型也进入通用发布流程。"
+        }
+      ]
+    }
+  ],
+  "metadata": { "source": "backlink-publish" }
+}
+```
+
+回答映射与准入规则：
+
+- “全部可执行（推荐）”选择 `pending` 与 `failed + retryable`；“仅待发布”只选择 `pending`。
+- 执行范围的自定义回答必须能解析成当前所选批次中的正整数 item ID，按原批次归属和实际可执行状态求交集；不得把另一个批次、已发布、重复来源或 `manual_required` 条目纳入。
+- “智能匹配（推荐）”映射为 smart；“全部尝试”映射为 all。同一次批量发布的已确认范围规则与模式应用于全部所选批次，逐批计算真实 item ID。
+- 两项回答都存在且可解析之前，不得调用 `batch_claim`、不得创建邮箱、不得启动浏览器发布或产生任何第三方写操作。取消、跳过、空回答、未知选项、自定义 ID 为空或失效时，报告“尚未完成执行范围与模式选择”并结束本次流程；不能采用默认值继续。
+- `AskUserQuestion` 不可用时停止并报告交互能力缺失，不能改用普通文本提问后先行认领。用户回答后若后台状态已变化，重新只读获取详情并按相同答案收窄；候选为空时报告并结束，不扩大范围。
 
 ## 2. 认领与保活
 
 调用 `{"action":"batch_claim","batchId":123,"itemIds":[1001,1002]}`；`itemIds` 来自本次选择并去除已发布项。省略 `itemIds` 表示服务端默认待发布和可重试范围，不等于全部强制执行。仅以返回租约授予的条目作为执行清单，记下真实 `leaseId`。
 
-- 主任务拥有租约，约每 30 秒调用 `{"action":"lease_heartbeat","leaseId":900}`。并发和串行使用相同的时间规则，不能按“每完成几个条目”计时。
+- 主任务拥有租约生命周期。分派前先约每 30 秒调用 `{"action":"lease_heartbeat","leaseId":900}`；子代理运行期间由各活跃子代理通过受限 `backlinks_worker` 续租同一 lease。并发和串行使用相同的时间规则，不能按“每完成几个条目”计时。
 - 长时间浏览器等待、收邮件或人工处理不能阻塞保活。持有租约时把单次邮件等待缩短至例如 `waitTimeoutMs:20000`，有界分段等待之间保活；总计默认最多等 120 秒。不要在一次 120 秒阻塞调用期间假定租约仍然有效。
 - `LEASE_CONFLICT` 遵循服务端 `Retry-After`，不抢占别人的租约。保活失败或 `LEASE_NOT_ACTIVE` 时停止新提交，先读取批次核对结果；不能不核对就重新 claim 并重放提交。
 - 全部条目结束或用户取消时，由主任务调用 `{"action":"lease_release","leaseId":900}`。先让正在运行的子任务停止新操作并核对未知提交，不能在仍有发布动作时提前释放。释放失败如实报告，不声称已释放。
 
 ## 3. 选择执行方式
 
-默认串行。条目至少 3 个、分属不同域名、可保证保活且每组独占页面时，可使用最多 3 个 ZCode **`Agent`** 子任务并发处理。按 `sourceHost` 分组，同域名串行；同 `sourceId` 或同推广网站的重复来源不能分派到不同组。共享登录、验证码或 OAuth 账号操作串行处理；无法隔离就回到串行。
+认领成功后，**每次实际发布都必须通过 ZCode 原生 `Agent` 调用专用 `backlinks:backlink-publisher` 子代理**；即使只有一个 item，也不能由主任务直接操作目标网站。若 `Agent` 或该 profile 不可用，在认领前停止并报告能力缺失，不能静默退回主任务发布。
+
+按标准化后的 `sourceHost` 建立队列，并使用**最多 3 个并发槽**滚动调度：
+
+1. 一个子代理一次只分配一个 item 和一个 `batch-{batchId}-item-{itemId}` 独占页面。
+2. 不同 `sourceHost` 可同时占用槽位；同一 host 只有前一项完成并核对终态后才能分派下一项。
+3. 同 `sourceId`、同推广网站、共享 Google OAuth、邮箱收件上下文或其他账号状态的条目强制进入同一串行队列。
+4. 某个子代理结束后立刻从尚未运行的不同 host 队列补位，直到全部队列排空；不能一次启动无限数量子代理。
+5. 主任务只负责范围、认领、队列、等待、终态核对与释放。子代理使用受限 `backlinks_worker` 续租和回写，不能查询、认领或释放批次。
 
 原生工具调用形状是：
 
 ```json
 {
-  "description": "处理目录站分组",
-  "subagent_type": "general-purpose",
+  "description": "发布条目 1001",
+  "subagent_type": "backlinks:backlink-publisher",
   "run_in_background": true,
-  "prompt": "完整、自包含的分组任务说明，包含下面列出的约束和真实条目数据。"
+  "prompt": "完整、自包含的单条目任务说明，包含下面列出的约束和真实条目数据。"
 }
 ```
 
-`Agent` 返回后台任务信息，完成后通知主任务。不要调用不存在的 `subagent` / `Subagent` 工具或添加 `model`、`action` 字段。主任务负责等待、保活、汇总和 release，不假定子任务会自动加载技能。
+同一轮可并列发出最多 3 个 `Agent` 工具调用，使不同 host 真正并发。`Agent` 返回后台任务信息，完成后通知主任务。不要调用不存在的 `subagent` / `Subagent` 工具，不要使用 `general-purpose`，也不要添加 `model`、`action` 字段。主任务记录所有 agentId 与 itemId 的映射，在全部已启动任务返回前不得 release。
 
 每个子任务提示词必须带上：
 
-- 执行模式、完整网站资料包与 anchors、分组内全部 item 信息（id / sourceId / sourceUrl / submitUrl / sourceHost / category / tags / sourceNotes / 状态 / publishedUrl），真实 `leaseId`、允许执行的 item IDs 和独占页面名。
+- 执行模式、完整网站资料包与 anchors、**唯一一个** item 的信息（id / sourceId / sourceUrl / submitUrl / sourceHost / category / tags / sourceNotes / 状态 / publishedUrl），真实 `leaseId`、唯一允许执行的 item ID 和独占页面名。
 - 本技能的幂等、证据、租约规则，以及对应 playbook 的完整相关内容；`navigate` 指定独占页，之后所有页面动作都带该页。Google 会话检查和 OAuth 弹窗使用独立明确的页引用，不抢其他组的页面。
 - 找不到评论区前完成懒加载探测；根据实际编辑器能力选择 Website、富文本链接或明确支持的 HTML / BBCode，不向富文本框直接输入 HTML。
 - 可自助邮箱注册；当前生产部署必须使用 `backlinks_status` 返回的显式 `screwdom.org` 配置，不能退回 Cloud Mail 域名列表首项。验证码链接先核对站点和邮箱上下文；Google 密码与二次验证只由用户输入。
 - 一次最终提交；结果未知或正文 HTML 被转义写 `failed + manual_required`，不重发。每条立即 `item_result`，然后按观察 `source_tags`。
-- 不自行 claim、release、不改主任务的范围、不另开用户问题。发现人工阻碍时 `bringToFront` 保留页面并报告；失去租约或收到取消后停止新的副作用。
+- 先用 `backlinks_worker` 保活；邮件等待拆成最多 20 秒的区段并在区段之间保活。不自行 claim、release、不改主任务的范围、不另开用户问题。发现人工阻碍时 `bringToFront` 保留页面并报告；失去租约或收到取消后停止新的副作用。
+
+每个子代理返回后，主任务用 `batch_get` 核对该 item 的真实后台终态和 `publishRecordId`，不能只凭子代理文本或工具 completed 声称成功。若子代理异常退出且后台没有终态，先判断最终提交是否可能已经发生：确定未提交才可写 `failed + retryable`；不确定则写 `failed + manual_required`。所有队列排空并完成核对后再 release；release 后汇总 `live`、`submitted`、失败、跳过与人工项。
 
 ## 4. 单条目流程
 

@@ -34,4 +34,4 @@ export {
 export { BacklinksProviderRegistry } from "./app/registry.js";
 export { executeBacklinksCommand } from "./app/execute.js";
 export type { BacklinksRuntime } from "./domain/ports.js";
-export { backlinksCommandSchema } from "./domain/commands.js";
+export { backlinkWorkerCommandSchema, backlinksCommandSchema } from "./domain/commands.js";

@@ -2043,7 +2043,10 @@ export function createZCodeTaskServiceAdapter(
         workspaceIdentity: target.workspaceIdentity,
         envelope: createHostCommandEnvelope({
           type: "stop",
-          payload: {},
+          payload: {
+            ...(params.scope ? { scope: params.scope } : {}),
+            ...(params.cleanupMcpServers ? { cleanupMcpServers: params.cleanupMcpServers } : {}),
+          },
           sessionId: params.taskId,
         }),
       });

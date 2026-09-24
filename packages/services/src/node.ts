@@ -13,6 +13,7 @@ import { getAppConfigDir as resolveAppConfigDir } from "./paths.js";
 import {
   buildLocalMediaPreviewUrl,
   isProviderProvisioningAccountCredentialKey,
+  LINK_AGENT_PRODUCT_PROFILE,
   type ProviderProvisioningTrigger,
 } from "@zcode/shared";
 
@@ -2072,6 +2073,7 @@ export function createLocalServices(options: {
   let offPeakTaskServiceForAgent: OffPeakTaskService | undefined;
   // desktop-attached-remote 装配不暴露 Off-Peak 工具面（远程不在支持范围）。
   const offPeakToolWiring =
+    !LINK_AGENT_PRODUCT_PROFILE.features.offPeak ||
     options?.serviceAuthorityMode === "desktop-attached-remote"
       ? {}
       : {
@@ -2541,7 +2543,10 @@ export function createLocalServices(options: {
             void originResolver.close().catch(() => undefined);
           },
         });
-        offPeakTaskService.startSync();
+        // LinkAgent 不提供闲时编码任务；保留接口壳以兼容既有依赖注入，禁止启动轮询与远端同步。
+        if (LINK_AGENT_PRODUCT_PROFILE.features.offPeak) {
+          offPeakTaskService.startSync();
+        }
         // 回写前向引用，供 zcodeAgentService 的 offPeak/create、offPeak/list 协议 handler 调用。
         offPeakTaskServiceForAgent = offPeakTaskService;
         return offPeakTaskService;

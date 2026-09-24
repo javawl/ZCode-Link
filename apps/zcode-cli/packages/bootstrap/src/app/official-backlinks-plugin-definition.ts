@@ -1,8 +1,8 @@
 import type { OfficialPluginDefinition } from "./official-plugin-definitions.js";
 
 export const OFFICIAL_BACKLINKS_PLUGIN_DEFINITION: OfficialPluginDefinition = {
-  // 发布浏览器和第三方账号连接须由用户显式启用；安装 seed 不等于授权外链发布。
-  defaultEnabled: false,
+  // LinkAgent 的运行面只保留本插件；启动即加载能力，但第三方写操作仍需发布入口和双问答。
+  defaultEnabled: true,
   name: "backlinks",
   version: "0.1.0",
   listing: {
@@ -22,6 +22,7 @@ export const OFFICIAL_BACKLINKS_PLUGIN_DEFINITION: OfficialPluginDefinition = {
     "../../../backlinks-plugin",
   ],
   requiredSeedPaths: [
+    "agents/backlink-publisher.md",
     "commands/backlink-publish.md",
     "docs/browser.md",
     "dist/configure.js",

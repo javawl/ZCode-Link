@@ -4,8 +4,14 @@
  * 可与正式版并排安装的 `ZCode Preview`。
  */
 export const ZCODE_PREVIEW_IDENTITY_ENV = "ZCODE_PREVIEW_IDENTITY";
-// LinkAgent 尚未配置自己的发布源，不能从上游 ZCode feed 下载或强制安装另一款客户端。
-export const DESKTOP_UPDATES_ENABLED = false;
+// LinkAgent 只从自己的 GitHub Releases 读取普通更新；上游 ZCode 的强更 API 仍须关闭。
+export const DESKTOP_UPDATES_ENABLED = true;
+export const DESKTOP_FORCE_UPDATES_ENABLED = false;
+export const LINKAGENT_UPDATE_REPOSITORY = Object.freeze({
+  provider: "github",
+  owner: "javawl",
+  repo: "ZCode-Link",
+});
 
 const PRODUCTION_IDENTITY = Object.freeze({
   flavor: "production",

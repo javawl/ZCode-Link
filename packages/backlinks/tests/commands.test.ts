@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { backlinksCommandSchema, BacklinksError } from "../src/contract.js";
+import {
+  backlinkWorkerCommandSchema,
+  backlinksCommandSchema,
+  BacklinksError,
+} from "../src/contract.js";
 import { executeBacklinksCommand, BacklinksProviderRegistry } from "../src/node.js";
 
 test("command schema preserves source names and rejects accidental broadened claims", () => {
@@ -28,6 +32,28 @@ test("command schema preserves source names and rejects accidental broadened cla
     { action: "batch_heartbeat", leaseId: 1 },
   ])
     assert.equal(backlinksCommandSchema.safeParse(command).success, false);
+});
+
+test("worker command schema permits item work but cannot own a batch lease", () => {
+  for (const command of [
+    { action: "lease_heartbeat", leaseId: 3 },
+    { action: "item_result", itemId: 2, status: "skipped", skipReason: "duplicate" },
+    { action: "badge_add", websiteId: 1, name: "Badge", html: "<b>Badge</b>" },
+    { action: "source_tags", sourceId: 2, tags: ["可复用"] },
+    { action: "mailbox_create", localPart: "a", domain: "mail.test" },
+    { action: "mail_wait", mailEmail: "a@mail.test" },
+  ]) {
+    assert.equal(backlinkWorkerCommandSchema.safeParse(command).success, true);
+  }
+
+  for (const command of [
+    { action: "batch_list" },
+    { action: "batch_get", batchId: 1 },
+    { action: "batch_claim", batchId: 1, itemIds: [2] },
+    { action: "lease_release", leaseId: 3 },
+  ]) {
+    assert.equal(backlinkWorkerCommandSchema.safeParse(command).success, false);
+  }
 });
 
 test("dispatcher reaches all ten operations and preserves domain and timeout defaults", async () => {

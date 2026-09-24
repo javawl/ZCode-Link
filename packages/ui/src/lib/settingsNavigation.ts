@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- 设置导航意图集中管理 sessionStorage、事件桥接和解析校验，拆分会让一次性意图消费顺序更难保证。 */
 import { logger } from "@/logger.js";
+import { isLinkAgentSettingsSection } from "@zcode/shared";
 
 export type SettingsSectionId =
   | "general"
@@ -84,7 +85,7 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
 }
 
 export function isSettingsSectionEnabled(section: SettingsSectionId): boolean {
-  return !HIDDEN_SETTINGS_SECTIONS.has(section);
+  return !HIDDEN_SETTINGS_SECTIONS.has(section) && isLinkAgentSettingsSection(section);
 }
 
 export function resolveSettingsSection(

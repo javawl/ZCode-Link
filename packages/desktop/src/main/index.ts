@@ -131,6 +131,7 @@ import {
 import { applyAppIcon } from "./desktopWindowChrome.js";
 import {
   DESKTOP_UPDATES_ENABLED,
+  DESKTOP_FORCE_UPDATES_ENABLED,
   resolveWindowsAppUserModelIdForFlavor,
 } from "../../scripts/desktop-product-identity.mjs";
 import type { DesktopWindowSize } from "./desktopWindowSize.js";
@@ -2189,7 +2190,7 @@ app.whenReady().then(async () => {
   // gate 照常生效，对真实用户零影响。
   const skipForceUpdateForLocalDevRuntime = !app.isPackaged;
   const forceUpdateGuardResult =
-    DESKTOP_UPDATES_ENABLED &&
+    DESKTOP_FORCE_UPDATES_ENABLED &&
     ZCODE_PRODUCT_FLAVOR === "production" &&
     !skipForceUpdateForLocalDevRuntime
       ? await maybeBlockStartupForForceUpdate({

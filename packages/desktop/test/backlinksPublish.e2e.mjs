@@ -3,6 +3,7 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import {
   createBacklinksPublishFixture,
+  PUBLISH_DEFAULT_MODEL_ID,
   PUBLISH_MODEL_ID,
   PUBLISH_COMPLETION,
 } from "./fixtures/backlinksPublishServer.mjs";
@@ -17,7 +18,7 @@ const desktop = resolve(import.meta.dirname, "..");
 const modelId = PUBLISH_MODEL_ID;
 
 test(
-  "publish completes real Agent, skill, MCP, browser submission, result reporting and lease release",
+  "publish completes real parent and publishing subagent, MCP, browser submission, result reporting and lease release",
   { timeout: 180_000 },
   async () => {
     const data = await mkdtemp(join(tmpdir(), "linkagent-publish-e2e-"));
@@ -37,8 +38,6 @@ test(
       { mode: 0o600 },
     );
     let app;
-    let approvalTimer;
-    let approving = false;
     try {
       app = await _electron.launch({
         executablePath: require("electron"),
@@ -60,19 +59,6 @@ test(
       });
       const page = await app.firstWindow();
       page.setDefaultTimeout(30_000);
-      // 只批准本测试脚本产生的工具调用；服务、网页和模型均指向临时 loopback fixture。
-      approvalTimer = setInterval(async () => {
-        if (approving) return;
-        approving = true;
-        try {
-          const allow = page.locator('[data-permission-option-kind="allowOnce"]').first();
-          if (await allow.isVisible()) await allow.click({ timeout: 500 });
-        } catch {
-          /* 页面关闭或审批卡片在检查后已移除。 */
-        } finally {
-          approving = false;
-        }
-      }, 150);
       await page.getByTestId("task-settings-button").waitFor({ timeout: 60_000 });
       await page.keyboard.press(process.platform === "darwin" ? "Meta+," : "Control+,");
       await page.getByTestId("settings-section-nav-modelProvider").click();
@@ -81,15 +67,48 @@ test(
       await page.getByTestId("model-provider-base-url-input").press("Tab");
       await page.getByTestId("model-provider-api-key-input").fill("local-model-placeholder");
       await page.getByTestId("model-provider-api-key-input").press("Tab");
-      await page.getByTestId("model-provider-add-model-button").click();
-      const dialog = page.getByRole("dialog");
-      await dialog.getByRole("textbox").first().fill(modelId);
-      await dialog.getByRole("button", { name: /^(添加|保存|Add|Save)$/ }).click();
-      await dialog.waitFor({ state: "hidden" });
+      for (const nextModelId of [modelId, PUBLISH_DEFAULT_MODEL_ID]) {
+        await page.getByTestId("model-provider-add-model-button").click();
+        const dialog = page.getByRole("dialog");
+        const modelIdInput = dialog.getByRole("textbox").first();
+        await modelIdInput.fill(nextModelId);
+        await modelIdInput.press("Tab");
+        await dialog.getByRole("button", { name: /^(添加|保存|Add|Save)$/ }).click();
+        await page
+          .locator(`[data-testid^="model-row-"][data-testid$="-${nextModelId}"]`)
+          .waitFor({ timeout: 60_000 });
+        await dialog.waitFor({ state: "hidden", timeout: 60_000 });
+      }
+      const defaultModelRow = page.locator(
+        `[data-testid^="model-row-"][data-testid$="-${PUBLISH_DEFAULT_MODEL_ID}"]`,
+      );
+      await defaultModelRow.getByRole("button", { name: "设为默认模型", exact: true }).click();
+      await defaultModelRow.getByText("默认", { exact: true }).waitFor();
       await page.getByTestId("settings-back-button").click();
-      await page.getByTestId("backlinks-sidebar-tab").click();
+      assert.equal(
+        await page.getByTestId("backlinks-sidebar-tab").getAttribute("aria-selected"),
+        "true",
+      );
       const row = page.getByTestId("backlinks-batch-615");
       await row.getByRole("button", { name: "发布", exact: true }).click();
+      const scopeQuestion = page.getByRole("listbox", {
+        name: "本次执行哪些条目范围？",
+      });
+      await scopeQuestion.waitFor({ state: "visible", timeout: 90_000 });
+      const permissionStatus = page.getByTestId("chat-mode-select-trigger");
+      assert.equal(await permissionStatus.getAttribute("data-permission-mode"), "yolo");
+      assert.equal(await permissionStatus.getAttribute("data-permission-mutable"), "false");
+      assert.equal(await page.locator('[data-testid^="chat-mode-select-item"]').count(), 0);
+      assert.equal(fixture.state.claims, 0, "the runtime must not claim before both answers");
+      assert.equal(await scopeQuestion.getByRole("option").count(), 2);
+      await scopeQuestion.getByRole("option", { name: /全部可执行（推荐）/ }).click();
+      const modeQuestion = page.getByRole("listbox", {
+        name: "本次采用哪种执行模式？",
+      });
+      await modeQuestion.waitFor({ state: "visible" });
+      assert.equal(fixture.state.claims, 0, "the second question must still block the claim");
+      assert.equal(await modeQuestion.getByRole("option").count(), 2);
+      await modeQuestion.getByRole("option", { name: /智能匹配（推荐）/ }).click();
       await page.waitForFunction(
         () =>
           document.body.innerText.includes("LINKAGENT_PUBLISH_ACCEPTED") ||
@@ -98,11 +117,25 @@ test(
         { timeout: 90_000 },
       );
       const text = await page.locator("body").innerText();
+      assert.equal(
+        await page.locator("[data-permission-option-kind]").count(),
+        0,
+        "Backlinks MCP calls must not create a permission dialog in fixed full-access mode",
+      );
       assert.doesNotMatch(text, /FOREIGN KEY constraint failed/);
-      assert.ok(fixture.state.modelRequests.some((request) => request.hasPublishCommand));
+      assert.ok(
+        fixture.state.modelRequests.some(
+          (request) => request.hasPublishCommand && request.model === PUBLISH_DEFAULT_MODEL_ID,
+        ),
+      );
       assert.deepEqual(fixture.state.errors, []);
       assert.equal(fixture.state.skillLoaded, true);
+      assert.equal(fixture.state.questionsAsked, true);
+      assert.equal(fixture.state.answersObserved, true);
       assert.equal(fixture.state.claims, 1);
+      assert.equal(fixture.state.agentsLaunched, 1);
+      assert.equal(fixture.state.childCompleted, true);
+      assert.ok(fixture.state.childToolSets.length > 0);
       assert.equal(fixture.state.submissions, 1);
       assert.equal(fixture.state.anchorObserved, true);
       assert.equal(fixture.state.reports.length, 1);
@@ -118,6 +151,11 @@ test(
               "SELECT count(*) AS count FROM session_input i JOIN session s ON i.session_id = s.id",
             )
             .get().count > 0,
+        );
+        assert.equal(
+          db.prepare("SELECT count(*) AS count FROM session WHERE parent_id IS NOT NULL").get()
+            .count,
+          1,
         );
       } finally {
         db.close();
@@ -139,7 +177,6 @@ test(
       }
       throw error;
     } finally {
-      clearInterval(approvalTimer);
       await app?.close();
       await fixture.close();
     }

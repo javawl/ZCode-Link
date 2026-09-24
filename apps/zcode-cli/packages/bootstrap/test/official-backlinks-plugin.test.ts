@@ -4,17 +4,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS,
   DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS,
   OFFICIAL_PLUGIN_DEFINITIONS,
 } from "../src/app/official-plugin-definitions.js";
 import { writeOfficialPluginRuntimeManifest } from "../src/app/official-plugin-runtime.js";
 
-test("backlinks is discoverable with explicit opt-in and a complete runtime seed", () => {
+test("backlinks is the default LinkAgent plugin with a complete runtime seed", () => {
   const definition = OFFICIAL_PLUGIN_DEFINITIONS.find(({ name }) => name === "backlinks");
   assert.ok(definition);
   assert.equal(definition.version, "0.1.0");
-  assert.equal(definition.defaultEnabled, false);
-  assert.equal(DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS.has("backlinks@zcode-plugins-official"), false);
+  assert.equal(definition.defaultEnabled, true);
+  assert.equal(DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS.has("backlinks@zcode-plugins-official"), true);
+  assert.deepEqual(
+    ACTIVE_OFFICIAL_PLUGIN_DEFINITIONS.map(({ name }) => name),
+    ["backlinks"],
+  );
   assert.equal(definition.listing?.author?.name, "javawl");
   assert.ok(definition.listing?.displayName);
   assert.ok(definition.listing?.displayName_i18n?.["zh-CN"]);
@@ -22,6 +27,7 @@ test("backlinks is discoverable with explicit opt-in and a complete runtime seed
   assert.ok(definition.rootCandidates.includes("packages/backlinks-plugin"));
   assert.ok(definition.runtimeTopLevelPaths?.includes("runtime"));
   for (const path of [
+    "agents/backlink-publisher.md",
     "commands/backlink-publish.md",
     "docs/browser.md",
     "dist/configure.js",

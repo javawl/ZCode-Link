@@ -6,9 +6,13 @@ import type { BacklinkLeaseClaim } from "../domain/schemas.js";
 export class OwnedBacklinksLeases {
   private readonly leases = new Map<
     number,
-    { provider: BacklinkBatchSourceProvider; itemIds: ReadonlySet<number> }
+    { provider: BacklinkBatchSourceProvider; itemIds: ReadonlySet<number>; ownerKey?: string }
   >();
-  remember(claim: BacklinkLeaseClaim, provider: BacklinkBatchSourceProvider): void {
+  remember(
+    claim: BacklinkLeaseClaim,
+    provider: BacklinkBatchSourceProvider,
+    ownerKey?: string,
+  ): void {
     if (this.leases.has(claim.leaseId))
       throw new BacklinksError(
         `租约 ${claim.leaseId} 已由本进程持有，请先释放再认领。`,
@@ -17,6 +21,7 @@ export class OwnedBacklinksLeases {
     this.leases.set(claim.leaseId, {
       provider,
       itemIds: new Set(claim.items.map((item) => item.id)),
+      ...(ownerKey ? { ownerKey } : {}),
     });
   }
   providerForLease(id: number): BacklinkBatchSourceProvider | undefined {
@@ -32,11 +37,12 @@ export class OwnedBacklinksLeases {
   forget(id: number): void {
     this.leases.delete(id);
   }
-  async releaseAll(signal?: AbortSignal): Promise<void> {
+  async releaseAll(options: { ownerKey?: string; signal?: AbortSignal } = {}): Promise<void> {
     let failure: unknown;
     for (const [id, lease] of this.leases) {
+      if (options.ownerKey && lease.ownerKey !== options.ownerKey) continue;
       try {
-        await lease.provider.release(id, signal);
+        await lease.provider.release(id, options.signal);
         this.leases.delete(id);
       } catch (error) {
         failure ??= error;

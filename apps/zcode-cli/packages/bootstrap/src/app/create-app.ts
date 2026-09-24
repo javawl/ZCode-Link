@@ -34,7 +34,11 @@ import {
   type ExecutionShellSelection,
   type MessageId,
 } from "@zcode/contracts";
-import { isRemoteWorkspaceIdentity, resolveZCodeRuntimeEnv } from "@zcode/shared";
+import {
+  LINK_AGENT_PRODUCT_PROFILE,
+  isRemoteWorkspaceIdentity,
+  resolveZCodeRuntimeEnv,
+} from "@zcode/shared";
 import {
   ZCODE_ATTACHMENT_FAULT_CODES,
   ZCodeAttachmentFaultError,
@@ -60,7 +64,6 @@ import {
   asInputHistoryStore,
   asLocalSettingStore,
   openStartupSessionStore,
-  readProjectPermissionMode,
   readSessionModelSelection,
 } from "./session-store.js";
 import { createWorkflowFacade } from "./workflow-facade.js";
@@ -238,15 +241,11 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       options.sessionStore ?? (await openStartupSessionStore(configResult, startupTimer));
     const localSettingStore = asLocalSettingStore(sessionStore);
     const projectID = projectIdFromDirectory(workingDirectory);
-    const persistedMode = options.runtimeConfig?.mode
-      ? undefined
-      : readProjectPermissionMode(localSettingStore, projectID);
     let { configuredMcpServers, runtimeConfig, untrustedProjectMcpServers } =
       resolveAppRuntimeConfig({
         cliStorageRoot,
         configResult,
         options,
-        persistedMode,
         pluginHooks: pluginOutcome.hooks,
         pluginMcpServers: pluginOutcome.mcpServers,
         builtInMcpServers,
@@ -485,9 +484,9 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
         await initializeSessionShellEnvironment();
         const result = await runtime.resumeFromStore({
           ...(resumeOptions?.abortSignal ? { abortSignal: resumeOptions.abortSignal } : {}),
-          // 只传调用方原始 mode；项目/全局默认值不能伪装成 invocation override，
-          // 否则交互式 resume 将无法恢复真正持久化的 session mode。
-          modeOverride: options.runtimeConfig?.mode,
+          // LinkAgent 固定完全访问；恢复时显式覆盖旧 session 的 build/plan execution entry，
+          // 避免历史状态在第一次 MCP 调用前重新触发权限确认。
+          modeOverride: LINK_AGENT_PRODUCT_PROFILE.agentPermission.mode,
           persistedMessages: resumeOptions?.persistedMessages,
           traceContext: resumeTraceContext,
         });
