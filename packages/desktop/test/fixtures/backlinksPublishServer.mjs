@@ -69,6 +69,7 @@ export async function createBacklinksPublishFixture(evidence, options = {}) {
     childCancelled: false,
     childToolSets: [],
     anchorObserved: false,
+    pageRecycled: false,
     traces: [],
   };
   let baseUrl;
@@ -218,7 +219,8 @@ export async function createBacklinksPublishFixture(evidence, options = {}) {
         evidence: "本地测试站点的公开链接已核验",
       },
     ],
-    ["backlinks_browser", { action: "close" }],
+    // 成功回写后条目页应已由浏览器 adapter 回收；子代理不调用全局 close。
+    ["backlinks_browser", { action: "tabs" }],
   ];
   const save = () => writeFile(join(evidence, "workflow.json"), JSON.stringify(state, null, 2));
   const server = createServer(async (req, res) => {
@@ -298,6 +300,11 @@ export async function createBacklinksPublishFixture(evidence, options = {}) {
           if (waiting.input.action === "snapshot") {
             assert.match(output, /Fixture Project/);
             state.anchorObserved = true;
+          }
+          if (waiting.input.action === "tabs") {
+            assert.ok(state.reports.length > 0, "tabs must be read after item_result");
+            assert.doesNotMatch(output, /batch-615-item-1001/);
+            state.pageRecycled = true;
           }
           pending[role] = undefined;
         }

@@ -6,21 +6,21 @@
 
 ## 初始化和检查
 
-1. 用 `backlinks_browser` 的 `status` 读取 `running` / `headless`，用 `tabs` 检查已打开的页。
+1. 用 `backlinks_browser` 的 `status` 读取 `running` / `displayMode`，用 `tabs` 检查已打开的页。
 2. 选明确的 `google-session` 页，`navigate` 到 `https://accounts.google.com`。新命名页只通过 `navigate` 创建。所有 `snapshot`、`waitFor`、`bringToFront` 等操作都传该 `page`。
-3. 页面已显示登录账号时，导航到 `https://myaccount.google.com` 复核。否则将该页 `bringToFront`，请用户在宿主 Chrome 中自行输入密码并完成 2FA。
+3. 页面已显示登录账号时，导航到 `https://myaccount.google.com` 复核。否则将该页 `bringToFront`（恢复窗口并激活 Chrome），请用户在宿主 Chrome 中自行输入密码并完成 2FA。用户主动发起的 Google 登录直接显示，不延后。
 4. 约每 10 秒检查该页状态，最多 10 分钟；用户取消即停，超时如实报告。不要在密码或验证码填写时反复捕捉敏感字段。`waitFor` 只用于已知 URL/元素，不支持省略条件的睡眠。
-5. 确认后报告“当前 Google 会话已登录，可用于后续站点尝试”，同时说明若再验证仍需用户处理。账号默认脱敏显示，不在发布 evidence 保存账号信息。
+5. 确认后报告“当前 Google 会话已登录，可用于后续站点尝试”，同时说明若再验证仍需用户处理。账号默认脱敏显示，不在发布 evidence 保存账号信息。核验完成或用户取消后 `closePage` 该 `google-session` 页，窗口随即重新停靠；超时时对该页 `hold`（reason 如 `google login pending`）保留最长 24 小时，完成后重新运行 /google-session 核验。
 
-`headless:true` 下 `bringToFront` 不会创建可交互窗口。先用外链设置切换有界面模式，并在不影响执行中批次的时机正常重启浏览器。远程工作区的窗口在服务宿主上；不能承诺点击按钮后窗口会出现在用户手机。
+`bringToFront` 在 `displayMode` 为 `background`（默认）与 `visible` 时可显示窗口；`"headless"` 下不会创建可交互窗口，先用外链设置切换到 `background` 或 `visible`；新设置在浏览器下次空闲关闭或正常重启后生效（重启会关闭当前保留页），应选在没有执行中批次的时机。远程工作区的窗口在服务宿主上；不能承诺点击按钮后窗口会出现在用户手机。
 
 ## 发布流程中的决策树
 
 1. 目标站已登录：继续正常表单。
-2. 有 Google 按钮：用与发布页分开的命名页检查 Google 会话，避免导航覆盖尚未保存的表单。
+2. 有 Google 按钮：用与发布页分开、与条目绑定的命名页 `batch-{batchId}-item-{itemId}-google`（后缀可用 `-` / `_` / `/` 分隔）检查 Google 会话，避免导航覆盖尚未保存的表单，并让该页随条目回收或保留。不要使用 `google-session`：该名称保留给用户主动运行的 google-session 技能。
 3. Google 已登录：回到明确的发布页点击 OAuth 按钮，按下一节定位实际授权页；只处理用户已授权范围内的账号选择和正常基本登录同意。
-4. Google 未登录或要求“确认是你本人”/设备验证：若网站也有邮箱注册，可以走配置 cloud-mail 的正常路径。只有 Google 且无法完成时，`failed + manual_required`，说明“Google 会话未初始化或需重新验证，可先运行 /google-session”，保留页面。
-5. CAPTCHA 或其他人工墙：对明确的页 `bringToFront`，记实际阻碍，不破解。
+4. Google 未登录或要求“确认是你本人”/设备验证：若网站也有邮箱注册，可以走配置 cloud-mail 的正常路径。只有 Google 且无法完成时，`failed + manual_required`，说明“Google 会话未初始化或需重新验证，可先运行 /google-session”，再 `hold` 保留页面。
+5. CAPTCHA 或其他人工墙：写 `failed + manual_required` 记实际阻碍，再对明确的页 `hold`，不破解；发布过程中不 `bringToFront`，由主任务在批次结束后询问用户是否处理。
 
 ## OAuth 弹窗必须明确寻址
 
@@ -60,4 +60,4 @@
 
 用户可以选择为发布工作使用专用 Google 账号；账号选择是用户决定，不自动创建。密码、2FA、Cookie、完整 profile 永不写入技能、证据、Git 或上传资料。不要从用户日常 Chrome 复制 Cookie，不猜测 profile 文件位置，不承诺固定存储目录或有效月数。
 
-再次调用检查是只读/导航性质的会话核验，不清理旧 Cookie。用户要求“重置”时先明确是重新登录、换账号还是删除会话；普通初始化不删除 profile。正常批次结束不调用全局 `close`，避免关闭其他待人工处理的页。
+再次调用检查是只读/导航性质的会话核验，不清理旧 Cookie。用户要求“重置”时先明确是重新登录、换账号还是删除会话；普通初始化不删除 profile。正常批次结束不调用全局 `close`，避免关闭其他待人工处理的 held 页；页面由浏览器按条目结果与空闲时间自动回收。

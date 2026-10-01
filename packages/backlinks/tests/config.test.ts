@@ -154,6 +154,81 @@ test("independent processes preserve each other's settings updates", async () =>
   }
 });
 
+test("browser display mode defaults to background and maps the legacy headless flag", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "backlinks-display-mode-"));
+  try {
+    const runtime = createBacklinksRuntime({ dataBaseDir: dir, env: {} });
+    const initial = await runtime.getSettings();
+    assert.equal(initial.browser.displayMode, "background");
+    assert.equal(initial.browser.headless, false);
+    const path = join(dir, ".zcode", "v2", "backlinks.json");
+    await runtime.updateSettings({});
+    await writeFile(path, JSON.stringify({ version: 1, browser: { headless: true } }));
+    const legacy = await runtime.getSettings();
+    assert.equal(legacy.browser.displayMode, "headless");
+    assert.equal(legacy.browser.headless, true);
+    const visible = await runtime.updateSettings({ browser: { displayMode: "visible" } });
+    assert.equal(visible.browser.displayMode, "visible");
+    assert.equal(visible.browser.headless, false);
+    const stored = JSON.parse(await readFile(path, "utf8"));
+    assert.equal(stored.browser.displayMode, "visible");
+    assert.equal(stored.browser.headless, false, "the legacy flag follows the selected mode");
+    const background = await runtime.updateSettings({ browser: { displayMode: "background" } });
+    assert.equal(background.browser.displayMode, "background");
+    // 默认与无窗口只用旧字段表达，旧版本读取同一文件不会因为新字段失败。
+    const backgroundFile = JSON.parse(await readFile(path, "utf8"));
+    assert.equal("displayMode" in backgroundFile.browser, false);
+    assert.equal(backgroundFile.browser.headless, false);
+    await runtime.updateSettings({ browser: { displayMode: "headless" } });
+    const headlessFile = JSON.parse(await readFile(path, "utf8"));
+    assert.equal("displayMode" in headlessFile.browser, false);
+    assert.equal(headlessFile.browser.headless, true);
+    assert.equal((await runtime.getSettings()).browser.displayMode, "headless");
+    await runtime.updateSettings({ browser: { displayMode: "background" } });
+    await assert.rejects(
+      runtime.updateSettings({ browser: { displayMode: "offscreen" as never } }),
+      { code: "BACKLINKS_INVALID_REQUEST" },
+    );
+    assert.equal((await runtime.getSettings()).browser.displayMode, "background");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("settings files from newer versions keep unknown fields readable and preserved", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "backlinks-forward-compat-"));
+  try {
+    const runtime = createBacklinksRuntime({ dataBaseDir: dir, env: {} });
+    await runtime.updateSettings({});
+    const path = join(dir, ".zcode", "v2", "backlinks.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        version: 1,
+        futureTopLevel: { enabled: true },
+        browser: { channel: "chrome", futureBrowserOption: "kept" },
+      }),
+    );
+    assert.equal((await runtime.getSettings()).browser.channel, "chrome");
+    await runtime.updateSettings({ mailboxDomain: "mail.test" });
+    const stored = JSON.parse(await readFile(path, "utf8"));
+    assert.deepEqual(stored.futureTopLevel, { enabled: true });
+    assert.equal(stored.browser.futureBrowserOption, "kept");
+    assert.equal(
+      "futureBrowserOption" in (await runtime.getSettings()).browser,
+      false,
+      "unknown fields never leak into snapshots",
+    );
+    await assert.rejects(
+      runtime.updateSettings({ browser: { futureBrowserOption: "x" } as never }),
+      { code: "BACKLINKS_INVALID_REQUEST" },
+      "user input stays strictly validated",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("browser launch flags remain opt-in and cannot override the dedicated profile", async () => {
   const dir = await mkdtemp(join(tmpdir(), "backlinks-browser-settings-"));
   try {

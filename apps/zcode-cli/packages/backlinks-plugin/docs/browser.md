@@ -4,14 +4,37 @@
 
 ## 配置与生命周期
 
-- 默认 `browser.channel` 为 `chrome`，`browser.headless` 为 `false`，需要宿主安装 Google Chrome。可在外链设置指定实际 `browser.executablePath`；具体可用 channel 以设置和运行时校验为准。
+- 默认 `browser.channel` 为 `chrome`，`browser.displayMode` 为 `background`，需要宿主安装 Google Chrome。可在外链设置指定实际 `browser.executablePath`；具体可用 channel 以设置和运行时校验为准。
 - 高级配置保留源版本的 `browser.launchArgs`、`browser.ignoreDefaultArgs`（字符串数组）以及 `browser.windowPosition`（例如 `-32000,-32000`）。默认数组为空，不移动窗口，也不主动更改自动化标记。仅显式配置后才传给 Chromium；独立的 windowPosition 字段优先于 launchArgs 中的同名参数。两个参数数组都禁止覆盖 `--user-data-dir` 或 `--profile-directory`，持久 profile 的隔离由宿主负责。不同浏览器版本可能拒绝特定参数；这些选项不保证 Google 接受登录，也不用于绕过验证码。
 - 浏览器按需启动。`status` 可以在未启动时读取配置与运行状态，不应为了看状态创建窗口。`tabs` 返回当前打开的页。
 - profile 由宿主按工作区身份管理，正常关闭后可复用登录态；不同工作区隔离。不自行拼接 profile 路径，不复制用户日常浏览器 Cookie，不导出 profile，不删除锁文件强行占用正在运行的实例。
 - 第二个运行时使用同一个 profile 会收到 `BROWSER_PROFILE_IN_USE`。先正常关闭占用该 profile 的宿主。异常退出留下的锁，只有在它属于本机、记录完整、PID 已确定不存在，且所有者和文件 inode 均未变化时才会安全回收；并发回收有独立互斥保护。活进程、其他主机、未知格式或未知回收锁一律保留并报告，不能强行删除。
 - 有界面 Chrome 的窗口在工具运行的宿主机器上。远程 Web/手机客户端操作同一宿主，并不在客户端新建 Chrome。
-- `headless:true` 不提供可见交互窗口。人工登录/CAPTCHA 需要可见宿主窗口；先按设置调整并在不影响执行中任务时正常重新启动。修改浏览器启动配置对新启动实例生效，不能把配置值变化当作已运行实例已重启。
-- 服务器正常退出会释放浏览器。日常批次完成只关闭自己不需要的页面，保留人工页；全局 `close` 会关闭自有浏览器或断开外部连接，不应在其他任务仍使用时调用。
+- 服务器正常退出会释放浏览器。批次完成不调用全局 `close`；页面按下文规则自动回收，held 页保留给人工处理。全局 `close` 会关闭自有浏览器或断开外部连接，不应在其他任务仍使用时调用。
+
+### 显示模式
+
+`browser.displayMode` 取 `background` / `visible` / `headless`，在外链设置中选择。未设置时，旧配置 `headless:true` 读为 `headless`，其余为 `background`；`status` 同时返回 `displayMode` 与派生的 `headless`。
+
+- `background`（默认）：有界面 Chrome 在后台运行，窗口停靠到显示器角落之外（Chrome 只保留约 40×100 像素的细边），新页以后台标签创建，除显式 `bringToFront` 外不抢焦点。不使用最小化：最小化窗口在锁屏或应用隐藏后会停止渲染，导致截图与页面脚本卡住。macOS 在启动与站点弹窗后把前台交还原应用；启动和站点弹窗可能短暂闪现（约 1 秒）。Windows / Linux 只做后台标签与停靠。
+- `visible`：普通可见窗口，用于调试。
+- `headless`：无窗口，`bringToFront` 不提供可交互窗口。人工登录/CAPTCHA 需要切换到 `background` 或 `visible`，并在不影响执行中任务时正常重新启动。修改浏览器启动配置对新启动实例生效，不能把配置值变化当作已运行实例已重启。
+- CDP 连接用户浏览器时只以后台标签创建页面，绝不移动、隐藏或切走用户浏览器的前台。
+- 显示（`bringToFront`）把该页所在窗口移回屏幕可见位置并激活。显示中的窗口不会被停靠，也不会放入新的自动化标签：之后的批次在另一个停靠窗口中运行，自动化弹窗照常停靠；用户在显示页上操作产生的弹窗保持原样。有页面处于显示状态时不做前台交还，避免打断用户在该 Chrome 中的操作。显示页被关闭或回收后，本插件的窗口重新停靠；显示过的页面不会回池复用。
+- 只停靠和复用本插件拥有的窗口与页面。用户在插件 Chrome 中自行打开的窗口/标签（或站点以 noopener 打开的新标签）仍会出现在 `tabs` 中可供观察和操作，但属于外来页面：回收时只解除页名，绝不清空、回池或关闭；有外来标签时整个浏览器不会因空闲被关闭。窗口中一旦出现外来标签，该窗口即转为用户所有，之后不再停靠，也不再放入自动化页面；此后新的自动化页面直接在新的停靠窗口中创建。
+- 插件 Chrome 被隐藏（如 Cmd+H）后页面无法截图；macOS 下每次为新页名取页前会取消隐藏（不激活）。
+
+### 页面池与自动回收
+
+页面生命周期由浏览器 adapter 管理，不依赖模型调用 `closePage`。
+
+- 页名 `batch-{batchId}-item-{itemId}`（可带 `-` / `_` / `/` 后缀）绑定该条目；站点弹窗按 opener 继承绑定。
+- `navigate` 新页名时优先复用空闲池中的 `about:blank` 页；自有浏览器空闲池最多 3 页，超出直接关闭。
+- `backlinks` 或 `backlinks_worker` 的 `item_result` 成功回写后：`live` / `submitted` / `skipped` / `failed + retryable` 关闭该条目弹窗，页面导航到 `about:blank` 后回池，页名失效（后续页面动作返回 `BROWSER_PAGE_NOT_FOUND`）；`failed + manual_required` 的条目页自动标记 held（`holdReason` 为 `manual_required`；子代理随后显式 `hold` 时替换为其给出的原因；具体阻碍仍以条目的 `failureReason` 为准）。页面核验必须在回写前完成。浏览器未启动时不为回收而启动，回收失败不影响回写结果。
+- 空闲清扫：非 held 页 10 分钟未使用回收（显示中的页面及其弹窗 30 分钟）；held 页及其弹窗随保留一起，24 小时后关闭；没有页面、没有 held 页且 30 分钟无活动时关闭整个浏览器（保留 profile 登录态；CDP 模式仅断开），下次使用时按最新的外链浏览器设置重新启动。修改显示方式等浏览器设置后，只要浏览器没有任何页面（含保留页与用户标签）且没有执行中的动作，下一次调用就会立即按新设置重建，不必等待空闲关闭。
+- 重试已保留的条目时，第一次 `navigate` 结束旧页面的保留，并在新的停靠页面中开始。
+- CDP 模式不启用页面池：回收（`item_result` 后、空闲超时或 `closePage`）只关闭自建页面，绝不触碰 `owned:false` 页面。
+- 回收只在该页当前动作结束后执行，不会中断执行中的动作。用户手动关闭的页自动移除记录。
 - 浏览器出错时检查结构化错误码和原因；发生过点击等可能提交的操作后，若返回 `sideEffect:"uncertain"` 或无法确认结果，不重放最终提交。
 
 ## 复用已有登录态
@@ -24,7 +47,7 @@
 
 插件原始工具名为 `backlinks_browser`，ZCode MCP 宿主可能增加命名空间。使用运行时实际发现的名称；不要依赖猜测的完整 `mcp__...` 前缀。
 
-公共参数为 `action`、`url`、`page`、`selector`、`value`、`key`、`files`、`waitUntil`、`timeoutMs`、`format`、`maxChars`。只传当前动作需要的字段；未知字段、非法类型和不适用参数以实际 schema 校验结果为准。
+公共参数为 `action`、`url`、`page`、`selector`、`value`、`key`、`files`、`waitUntil`、`timeoutMs`、`format`、`maxChars`、`reason`。只传当前动作需要的字段；未知字段、非法类型和不适用参数以实际 schema 校验结果为准。
 
 | action         | 主要参数                                         | 行为                                                                                           |
 | -------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
@@ -37,10 +60,11 @@
 | `upload`       | **page**、selector、files                        | 上传工作区内的真实文件                                                                         |
 | `screenshot`   | **page**                                         | 返回 PNG 图片，按 MCP 图片内容使用                                                             |
 | `waitFor`      | **page**、selector 与 url 二选一；可选 timeoutMs | 等待已知元素或 URL，有界等待；不是无条件睡眠                                                   |
-| `bringToFront` | **page**                                         | 把指定页所属窗口带到宿主前台                                                                   |
-| `closePage`    | **page**                                         | 关闭指定页，不删除持久 profile                                                                 |
-| `tabs`         | 无页面参数                                       | 列出可操作页面引用、URL、标题及可用的 openerPage                                               |
-| `status`       | 无页面参数                                       | 读取 running / headless / persistent                                                           |
+| `hold`         | **page**；可选 reason（≤200 字符）               | 标记指定页 held：保留给人工处理、不被回收，不改变窗口；返回 `acked`                            |
+| `bringToFront` | **page**                                         | 显示指定页：恢复窗口、激活标签与 Chrome；仅用于用户同意的人工处理或用户发起的 Google 登录      |
+| `closePage`    | **page**                                         | 释放页名：自有浏览器中回池，CDP 模式中关闭；不删除持久 profile                                 |
+| `tabs`         | 无页面参数                                       | 列出可操作页面引用、URL、标题及可用的 openerPage、held、holdReason、itemId                     |
+| `status`       | 无页面参数                                       | 读取 running / headless / persistent / displayMode / pages / heldPages                         |
 | `close`        | 无页面参数                                       | 正常关闭整个插件浏览器，保留持久 profile                                                       |
 
 `navigate` 的 URL 使用绝对 HTTP(S) 地址。`waitUntil` 支持 `load` / `domcontentloaded` / `networkidle`，通常优先 `domcontentloaded`，再针对真实元素 waitFor；不要用 networkidle 假定动态评论已渲染。
@@ -49,7 +73,7 @@
 
 ## 明确页面引用
 
-保留源版本 11 个页面动作，全部要求 `page`；不能依赖“当前活动页”或“最后打开的页”。创建独占页：
+保留源版本 11 个页面动作并新增 `hold`，全部要求 `page`；不能依赖“当前活动页”或“最后打开的页”。创建独占页：
 
 ```json
 {
@@ -83,12 +107,22 @@ OAuth 会产生新窗口时，点击前后读取 tabs；返回示意：
 }
 ```
 
+held 页额外带 `held:true`、`holdReason`，绑定条目的页带 `itemId`，例如 `{ "page": "batch-123-item-1002", "url": "https://forum.example/register", "title": "Register", "held": true, "holdReason": "manual_required", "itemId": 1002 }`。
+
 `page` 名称来自实际结果，示例不是固定生成规则。确认 openerPage / URL / 标题及新增关系后，用实际 popup page 操作。弹窗关闭后重新 tabs，再检查原发布页是否完成登录。新窗口数量大于一个或归属不清时先读取候选页确认，不能隐式跳到最后一张页。
 
 `status` 返回形状：
 
 ```json
-{ "kind": "status", "running": false, "headless": false, "persistent": true }
+{
+  "kind": "status",
+  "running": true,
+  "headless": false,
+  "persistent": true,
+  "displayMode": "background",
+  "pages": 2,
+  "heldPages": 1
+}
 ```
 
 该状态只表明浏览器模式和生命周期，不表示 Google 已登录，也不返回 Cookie、密码或认证 token。配置就绪与邮箱域名可通过插件的只读 `backlinks_status` 读取。
@@ -150,7 +184,7 @@ ARIA 的 link 角色能证明元素是链接，但其名称不一定显示实际
 
 ## 保留的使用场景与迁移调整
 
-迁移保留浏览、语义/iframe/坐标操作、ARIA/文本快照、键盘、选择表单、真实文件上传、截图、等待、前台人工接管与关页。新增 tabs / status / close 使 OAuth 页面归属和生命周期可以观察。
+迁移保留浏览、语义/iframe/坐标操作、ARIA/文本快照、键盘、选择表单、真实文件上传、截图、等待、前台人工接管与关页。新增 tabs / status / close 使 OAuth 页面归属和生命周期可以观察；新增 hold、后台显示模式与页面自动回收，人工处理集中到批次末尾。
 
 技能仍包括目录、博客、论坛、内容、游戏、工具六类 playbook；Google 会话、租约和证据指南保留。迁移调整了固定邮箱域名、硬编码己方刷新接口、隐式活动页、不一致并发规则、把 HTML 直写到富文本框与未知结果重发等源文档冲突。实际发布须经过用户选定范围和正常站点规则；迁移代码测试不代表已经向真实站点发布。
 

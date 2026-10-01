@@ -4,7 +4,11 @@ import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { acquireConfigLock } from "./config-lock.js";
 import { BacklinksError } from "../domain/errors.js";
-import { backlinksSettingsPatchSchema, settingsFileSchema } from "../domain/settings.js";
+import {
+  backlinksSettingsPatchSchema,
+  resolveBrowserDisplayMode,
+  settingsFileSchema,
+} from "../domain/settings.js";
 import type {
   BacklinksSettingsFile,
   BacklinksSettingsPatch,
@@ -88,7 +92,8 @@ export class BacklinksConfigStore {
       mailboxDomain: saved.mailboxDomain ?? this.env.ZCODE_BACKLINKS_MAILBOX_DOMAIN ?? "",
       browser: {
         ...saved.browser,
-        headless: saved.browser?.headless ?? false,
+        displayMode: resolveBrowserDisplayMode(saved.browser),
+        headless: resolveBrowserDisplayMode(saved.browser) === "headless",
         channel: saved.browser?.channel ?? "chrome",
         executablePath: saved.browser?.executablePath ?? "",
         launchArgs: saved.browser?.launchArgs ?? [],
@@ -101,6 +106,7 @@ export class BacklinksConfigStore {
         "BACKLINKS_INVALID_REQUEST",
       );
     const value = merged.data;
+    const displayMode = resolveBrowserDisplayMode(value.browser);
     return {
       supermanager: {
         baseUrl: value.supermanager?.baseUrl ?? "",
@@ -111,13 +117,17 @@ export class BacklinksConfigStore {
         token: value.cloudMail?.token?.trim() ?? "",
       },
       mailboxDomain: value.mailboxDomain ?? "",
+      // 只投影已知字段：新版本写入的未知字段保留在文件中，但不进入快照或运行时。
       browser: {
-        ...value.browser,
-        headless: value.browser?.headless ?? false,
+        ...(value.browser?.cdpEndpoint ? { cdpEndpoint: value.browser.cdpEndpoint } : {}),
+        ...(value.browser?.userDataDir ? { userDataDir: value.browser.userDataDir } : {}),
+        displayMode,
+        headless: displayMode === "headless",
         channel: value.browser?.channel ?? "chrome",
         executablePath: value.browser?.executablePath ?? "",
         launchArgs: value.browser?.launchArgs ?? [],
         ignoreDefaultArgs: value.browser?.ignoreDefaultArgs ?? [],
+        ...(value.browser?.windowPosition ? { windowPosition: value.browser.windowPosition } : {}),
       },
     };
   }
@@ -148,7 +158,32 @@ export class BacklinksConfigStore {
             else if (edit.token?.trim()) merged[key].token = edit.token.trim();
           }
           if (patch.mailboxDomain !== undefined) merged.mailboxDomain = patch.mailboxDomain;
-          if (patch.browser) merged.browser = { ...current.browser, ...patch.browser };
+          if (patch.browser) {
+            const { displayMode: requested, ...rest } = patch.browser;
+            const browser: NonNullable<BacklinksSettingsFile["browser"]> = {
+              ...current.browser,
+              ...rest,
+            };
+            const previousMode = resolveBrowserDisplayMode(current.browser);
+            // 旧客户端只发送 headless：true 表示无窗口；false 从无窗口回到默认后台，其余保持原模式。
+            const mode =
+              requested ??
+              (rest.headless === undefined
+                ? undefined
+                : rest.headless
+                  ? "headless"
+                  : previousMode === "headless"
+                    ? "background"
+                    : previousMode);
+            if (mode) {
+              // 默认后台不写字段、无窗口只用旧 headless 字段；仅调试用 visible 写入新字段，
+              // 让未改显示方式的配置文件仍能被旧版本读取。
+              browser.headless = mode === "headless";
+              if (mode === "visible") browser.displayMode = "visible";
+              else delete browser.displayMode;
+            }
+            merged.browser = browser;
+          }
           await this.writeFile(settingsFileSchema.parse(merged));
         } finally {
           await unlock();

@@ -21,7 +21,7 @@ user-invocable: true
 
 ## 1. 确定批次、范围与模式
 
-用户输入 `/backlink-publish 123`、提供多个批次号，或从批次控制台发来明确列表时，按这些批次执行，跳过重复的批次选择。多个批次去重，按数字 ID 降序逐个执行；不要同时占用多个批次租约。
+用户输入 `/backlink-publish 123`、提供多个批次号，或从批次控制台发来明确列表时，按这些批次执行，跳过重复的批次选择。多个批次去重，按数字 ID 降序逐个执行；不要同时占用多个批次租约。第 2–4 节逐批执行（每批独立 claim / 核对 / release）；第 5 节的汇总、`tabs`、`status`、人工处理 `AskUserQuestion` 与 `bringToFront` 只在最后一个批次 release 之后执行一次，覆盖本次所有批次。任何批次仍在执行时不得 `bringToFront`。
 
 没有批次号时：
 
@@ -97,7 +97,7 @@ user-invocable: true
 回答映射与准入规则：
 
 - “全部可执行（推荐）”选择 `pending` 与 `failed + retryable`；“仅待发布”只选择 `pending`。
-- 执行范围的自定义回答必须能解析成当前所选批次中的正整数 item ID，按原批次归属和实际可执行状态求交集；不得把另一个批次、已发布、重复来源或 `manual_required` 条目纳入。
+- 执行范围的自定义回答必须能解析成当前所选批次中的正整数 item ID，按原批次归属和实际可执行状态求交集；不得把另一个批次、已发布或重复来源条目纳入。`manual_required` 条目仅当用户在本次新请求中按 ID 明确要求重试、并确认阻碍已处理时才可纳入；认领前必须先 `batch_get` 确认该条目仍无 `submitted` / `live` / `publishedUrl`，并按 [状态模型](references/status-model.md) 核对站点公开页、站内记录或邮件，确认之前未提交。任何一项无法确认的条目排除并单列原因，不认领。两个固定选项永远不纳入 `manual_required` 条目。
 - “智能匹配（推荐）”映射为 smart；“全部尝试”映射为 all。同一次批量发布的已确认范围规则与模式应用于全部所选批次，逐批计算真实 item ID。
 - 两项回答都存在且可解析之前，不得调用 `batch_claim`、不得创建邮箱、不得启动浏览器发布或产生任何第三方写操作。取消、跳过、空回答、未知选项、自定义 ID 为空或失效时，报告“尚未完成执行范围与模式选择”并结束本次流程；不能采用默认值继续。
 - `AskUserQuestion` 不可用时停止并报告交互能力缺失，不能改用普通文本提问后先行认领。用户回答后若后台状态已变化，重新只读获取详情并按相同答案收窄；候选为空时报告并结束，不扩大范围。
@@ -139,11 +139,11 @@ user-invocable: true
 每个子任务提示词必须带上：
 
 - 执行模式、完整网站资料包与 anchors、**唯一一个** item 的信息（id / sourceId / sourceUrl / submitUrl / sourceHost / category / tags / sourceNotes / 状态 / publishedUrl），真实 `leaseId`、唯一允许执行的 item ID 和独占页面名。
-- 本技能的幂等、证据、租约规则，以及对应 playbook 的完整相关内容；`navigate` 指定独占页，之后所有页面动作都带该页。Google 会话检查和 OAuth 弹窗使用独立明确的页引用，不抢其他组的页面。
+- 本技能的幂等、证据、租约规则，以及对应 playbook 的完整相关内容；`navigate` 指定独占页，之后所有页面动作都带该页。Google 会话检查使用与条目绑定的 `batch-{batchId}-item-{itemId}-google` 页（不用保留给用户的 `google-session`），OAuth 弹窗使用 `tabs` 返回的实际页引用，不抢其他组的页面。
 - 找不到评论区前完成懒加载探测；根据实际编辑器能力选择 Website、富文本链接或明确支持的 HTML / BBCode，不向富文本框直接输入 HTML。
 - 可自助邮箱注册；当前生产部署必须使用 `backlinks_status` 返回的显式 `screwdom.org` 配置，不能退回 Cloud Mail 域名列表首项。验证码链接先核对站点和邮箱上下文；Google 密码与二次验证只由用户输入。
-- 一次最终提交；结果未知或正文 HTML 被转义写 `failed + manual_required`，不重发。每条立即 `item_result`，然后按观察 `source_tags`。
-- 先用 `backlinks_worker` 保活；邮件等待拆成最多 20 秒的区段并在区段之间保活。不自行 claim、release、不改主任务的范围、不另开用户问题。发现人工阻碍时 `bringToFront` 保留页面并报告；失去租约或收到取消后停止新的副作用。
+- 一次最终提交；结果未知或正文 HTML 被转义写 `failed + manual_required`，不重发。公开核验等页面工作全部在 `item_result` 之前完成；每条立即 `item_result`，然后按观察 `source_tags`。成功回写后条目页会被自动回收、页面名失效，不再对它执行页面动作。
+- 先用 `backlinks_worker` 保活；邮件等待拆成最多 20 秒的区段并在区段之间保活。不自行 claim、release、不改主任务的范围、不另开用户问题。发现人工阻碍时先写 `failed + manual_required`（`failureReason` 与 evidence 说明具体阻碍），再对独占页调用 `hold` 并报告；不调用 `bringToFront`、`closePage` 或全局 `close`。失去租约或收到取消后停止新的副作用。
 
 每个子代理返回后，主任务用 `batch_get` 核对该 item 的真实后台终态和 `publishRecordId`，不能只凭子代理文本或工具 completed 声称成功。若子代理异常退出且后台没有终态，先判断最终提交是否可能已经发生：确定未提交才可写 `failed + retryable`；不确定则写 `failed + manual_required`。所有队列排空并完成核对后再 release；release 后汇总 `live`、`submitted`、失败、跳过与人工项。
 
@@ -183,7 +183,7 @@ user-invocable: true
 - 已登录：复用设置选定的浏览器登录态；CDP 模式使用新的独占页面，不修改或关闭 `owned:false` 的原有页面。
 - 有邮箱注册：先确认 `backlinks_status.mailbox.defaultDomain` 为 `screwdom.org`，再调用 `{"action":"mailbox_create","localPart":"agent-7f42a1","domain":"screwdom.org"}`；localPart 每次生成唯一的字母/数字前缀。使用返回的真实邮箱注册，再调用 `{"action":"mail_wait","mailEmail":"agent-7f42a1@example.test","subjectContains":"Verify","waitTimeoutMs":20000}` 等待验证码或验证链接；示例 mailEmail 必须换成工具实际返回的邮箱，过滤条件按真实站点选择，避免错取其他邮件。
 - 有 Google OAuth：按 [Google 会话指南](references/google-session.md) 检查会话、选择明确弹窗并继续。若 Google 登录未就绪但站点同时提供邮箱注册，可走邮箱路径；仅 Google 且未就绪时 `manual_required`。
-- CAPTCHA、设备验证或注册被拒：保留页面，调用 `{"action":"bringToFront","page":"batch-123-item-1001"}`，记人工阻碍。普通“需要登录”不等于人工事件；先完成可用的常规注册流程。
+- CAPTCHA、设备验证或注册被拒：回写 `failed + manual_required` 记人工阻碍，再调用 `{"action":"hold","page":"batch-123-item-1001","reason":"CAPTCHA"}` 保留页面，留到批次结束统一处理；发布过程中不 `bringToFront`。普通“需要登录”不等于人工事件；先完成可用的常规注册流程。
 
 ### 4.4 准备资料、填表和提交
 
@@ -210,7 +210,7 @@ user-invocable: true
 
 ### 4.6 核验、回写与来源标签
 
-提交后读回执，再检查公开列表页/详情页。使用独立验证页可保留原表单；每个动作明确 `page`。ARIA 中真实 link 的名称要与锚文本相符，且实际 href 必须指向目标 URL（见 [证据指南](references/evidence.md)）；不能仅看文字中出现 URL。
+提交后读回执，再检查公开列表页/详情页。使用独立验证页可保留原表单，验证页必须命名为 `batch-{batchId}-item-{itemId}-verify`（后缀可用 `-` / `_` / `/` 分隔），使其与条目绑定、随条目回收或 held；每个动作明确 `page`。所有页面核验必须在 `item_result` 之前完成：回写成功后，`live` / `submitted` / `skipped` / `failed + retryable` 条目的弹窗关闭、页面自动回收，页面名失效（再操作返回 `BROWSER_PAGE_NOT_FOUND`）；`failed + manual_required` 条目的页面自动 held 保留。ARIA 中真实 link 的名称要与锚文本相符，且实际 href 必须指向目标 URL（见 [证据指南](references/evidence.md)）；不能仅看文字中出现 URL。
 
 结果使用 `backlinks` 的 `item_result`，共同参数为 `itemId`。租约上下文用来确认该 item 属于本次已领取范围；运行时维护条目与租约的关联，`item_result` 的实际 schema 不接受 `leaseId`，不要把它作为额外字段传入。只有 `lease_heartbeat` / `lease_release` 传 `leaseId`：
 
@@ -237,9 +237,40 @@ user-invocable: true
 
 ## 5. 完成与人工恢复
 
-主任务核对每条结果、停止子任务、释放租约，然后输出中文表格：批次 / 条目 / 来源 / live、submitted、failed、skipped / 公开 URL 或具体原因；另外列出未认领的已有发布记录、人工阻碍、回写或 release 失败。不能把“后台已收到结果”写成“公开链接已上线”。
+主任务核对每条结果、停止子任务并 `lease_release` 之后，输出中文表格：批次 / 条目 / 来源 / live、submitted、failed、skipped / 公开 URL 或具体原因；另外列出未认领的已有发布记录、人工阻碍、回写或 release 失败。不能把“后台已收到结果”写成“公开链接已上线”。
 
-保留需要人工操作的页面。批次完成不调用全局 `close`，避免关闭其他组或待人工处理的窗口；不再需要的自有页面可 `closePage`。登录态由宿主按工作区身份保存，通常可供之后复用，但会过期；不能承诺所有站点自动登录。用户完成 CAPTCHA / 登录后，仅重试已明确选择且确认未提交的条目。
+汇总后调用一次 `{"action":"tabs"}`。只统计本次运行已领取条目的 held 页：`held:true`，且 `itemId` 属于本次运行中各批次租约实际授予的条目（页名为 `batch-{batchId}-item-{itemId}` 或其弹窗）。本次运行以外的批次、并发任务或更早保留的 held 页不计数、不询问、不显示。每页的具体阻碍取该条目所属批次 release 前最后一次 `batch_get` 中的 `failureReason`；`holdReason` 可能是自动保留的 `manual_required` 或子代理 `hold` 时给出的原因，只作参考，不能代替 `failureReason`。
+
+若本次运行有 held 页，先调用 `{"action":"status"}`。`displayMode` 为 `headless` 时不提供“现在逐个处理”、不调用 `AskUserQuestion` 或 `bringToFront`：列出这些条目与 `failureReason`，然后对本次运行的每个 held 页调用一次 `closePage`（无头页面无法转为可见，保留没有意义，还会让新的显示设置无法生效）。说明无头模式没有可交互窗口；请用户先记录上述条目与 `failureReason`（不确定是否已提交的条目应先到站点核实），把外链设置切换为 `background` 或 `visible`。浏览器没有任何页面时，下一次使用会按新设置重新启动；之后在新请求中按 ID 重试这些 `manual_required` 条目。否则调用一次 `AskUserQuestion`，数量按本次运行实际 held 页填写：
+
+```json
+{
+  "questions": [
+    {
+      "question": "有 2 个页面需要人工处理，现在处理吗？",
+      "header": "人工处理",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "现在逐个处理",
+          "description": "依次把保留的页面显示到前台，由你在浏览器中完成。"
+        },
+        {
+          "label": "稍后处理",
+          "description": "页面最长保留 24 小时，之后可在新请求中重试这些条目。"
+        }
+      ]
+    }
+  ],
+  "metadata": { "source": "backlink-publish" }
+}
+```
+
+- 选择“现在逐个处理”：依次对本次运行每个 held 页调用 `{"action":"bringToFront","page":"batch-123-item-1001"}`，并列出对应条目与 `failureReason`。显示后只由用户在浏览器中操作：租约已释放，主任务不在这些页面填写、点击、提交，也不为它们写 `item_result`；需要重试时由用户在新请求中明确提出。告诉用户处理完可直接关闭这些标签；显示中的页面不影响之后批次的后台运行（新任务使用另一个停靠窗口）。
+- 选择“稍后处理”、取消或空回答：说明页面最长保留 24 小时，这些 `manual_required` 条目可在之后的新请求中明确选择后重试；不调用 `bringToFront`。
+- 本次运行没有 held 页时不提问。
+
+批次结束不调用全局 `close`；页面按条目结果与空闲时间自动回收，不需要 `closePage`。登录态由宿主按工作区身份保存，通常可供之后复用，但会过期；不能承诺所有站点自动登录。用户完成 CAPTCHA / 登录后，仅重试已明确选择且确认未提交的条目。重试前可先用 `tabs` / `snapshot` 只读查看仍保留的旧页面；重试条目的第一次 `navigate` 会结束旧页面的保留并在新的停靠页面中开始（登录态保存在 profile 中）。
 
 用户只要求“初始化/检查 Google 会话”时，改用 [google-session](../google-session/SKILL.md)，不认领批次。
 

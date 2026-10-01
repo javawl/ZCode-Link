@@ -64,6 +64,13 @@ export const backlinkBrowserInputSchema = z.discriminatedUnion("action", [
     ),
   z.object({ action: z.literal("bringToFront"), page }).strict(),
   z.object({ action: z.literal("closePage"), page }).strict(),
+  z
+    .object({
+      action: z.literal("hold"),
+      page,
+      reason: z.string().trim().min(1).max(200).optional(),
+    })
+    .strict(),
   z.object({ action: z.literal("tabs") }).strict(),
   z.object({ action: z.literal("status") }).strict(),
   z.object({ action: z.literal("close") }).strict(),
@@ -74,6 +81,7 @@ export type BacklinkBrowserPageCommand = Exclude<
   BacklinkBrowserCommand,
   { action: "tabs" | "status" | "close" }
 >;
+export type BacklinkBrowserDisplayMode = "background" | "visible" | "headless";
 
 export interface BacklinkBrowserTab {
   page: string;
@@ -81,6 +89,9 @@ export interface BacklinkBrowserTab {
   title: string;
   openerPage?: string;
   owned?: boolean;
+  itemId?: number;
+  held?: true;
+  holdReason?: string;
 }
 
 export type BacklinkBrowserResult =
@@ -88,7 +99,15 @@ export type BacklinkBrowserResult =
   | { kind: "acked" }
   | { kind: "screenshot"; pngBase64: string }
   | { kind: "tabs"; tabs: BacklinkBrowserTab[] }
-  | { kind: "status"; running: boolean; headless: boolean; persistent: true };
+  | {
+      kind: "status";
+      running: boolean;
+      headless: boolean;
+      persistent: true;
+      displayMode: BacklinkBrowserDisplayMode;
+      pages: number;
+      heldPages: number;
+    };
 
 export interface BacklinkBrowserExecutionContext {
   signal?: AbortSignal;
@@ -131,4 +150,37 @@ export function hasBrowserSideEffect(command: BacklinkBrowserCommand): boolean {
 export function assertBrowserNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted)
     throw new BacklinkBrowserError("BROWSER_ABORTED", "Browser command was cancelled");
+}
+
+/** 取消只提前结束调用方等待；已派发的副作用动作标记为结果未知。 */
+export async function withBrowserAbort<T>(
+  operation: Promise<T>,
+  signal: AbortSignal | undefined,
+  uncertain: () => boolean,
+): Promise<T> {
+  if (!signal) return await operation;
+  return await new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(
+        new BacklinkBrowserError(
+          "BROWSER_ABORTED",
+          "Browser command was cancelled",
+          uncertain() ? { sideEffect: "uncertain" } : {},
+        ),
+      );
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void operation.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+    if (signal.aborted) onAbort();
+  });
 }

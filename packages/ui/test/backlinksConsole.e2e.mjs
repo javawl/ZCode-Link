@@ -197,6 +197,8 @@ test(
       const saved = await page.evaluate(() => window.backlinksTest.settingsPatches[0]);
       assert.equal(Object.hasOwn(saved.supermanager, "token"), false);
       assert.equal(Object.hasOwn(saved.cloudMail, "token"), false);
+      assert.equal(saved.browser.displayMode, "background");
+      assert.equal(saved.browser.headless, false);
       await page.setViewportSize({ width: 390, height: 844 });
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -230,6 +232,33 @@ test(
       assert.equal(attached.browser.cdpEndpoint, "http://127.0.0.1:9222");
       assert.equal(attached.browser.userDataDir, "");
       assert.equal(attached.mailboxDomain, "");
+      assert.equal(attached.browser.displayMode, "background");
+      const displayMode = page.getByLabel("浏览器显示方式", { exact: true });
+      assert.equal((await displayMode.textContent())?.trim(), "后台（推荐）");
+      await displayMode.click();
+      assert.deepEqual(await page.getByRole("option").allTextContents(), [
+        "后台（推荐）",
+        "可见窗口",
+        "无窗口",
+      ]);
+      await page.getByRole("option", { name: "无窗口", exact: true }).click();
+      assert.equal((await displayMode.textContent())?.trim(), "无窗口");
+      await page.getByRole("button", { name: "保存设置", exact: true }).click();
+      await page.waitForFunction(() => window.backlinksTest.settingsPatches.length === 5);
+      const headlessPatch = await page.evaluate(() => window.backlinksTest.settingsPatches[4]);
+      assert.equal(headlessPatch.browser.displayMode, "headless");
+      assert.equal(headlessPatch.browser.headless, true);
+      const savedStatus = page.getByRole("status").filter({ hasText: "设置已保存" });
+      await savedStatus.waitFor();
+      assert.equal((await displayMode.textContent())?.trim(), "无窗口");
+      await displayMode.click();
+      await page.getByRole("option", { name: "可见窗口", exact: true }).click();
+      assert.equal(await savedStatus.count(), 0);
+      await page.getByRole("button", { name: "保存设置", exact: true }).click();
+      await page.waitForFunction(() => window.backlinksTest.settingsPatches.length === 6);
+      const visiblePatch = await page.evaluate(() => window.backlinksTest.settingsPatches[5]);
+      assert.equal(visiblePatch.browser.displayMode, "visible");
+      assert.equal(visiblePatch.browser.headless, false);
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

@@ -81,35 +81,40 @@ export const browserCdpEndpointSchema = z
     if (url.hostname === "localhost") url.hostname = "127.0.0.1";
     return url.origin;
   });
-const browser = z
-  .strictObject({
-    cdpEndpoint: browserCdpEndpointSchema.optional(),
-    userDataDir: z
-      .string()
-      .trim()
-      .max(4096)
-      .refine(
-        (value) => !value || (!value.includes("\0") && /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)),
-        "请输入已有独立浏览器目录的绝对路径",
-      )
-      .optional(),
-    headless: z.boolean().optional(),
-    channel: z.string().trim().max(100).optional(),
-    executablePath: z.string().trim().optional(),
-    launchArgs: launchArguments.optional(),
-    ignoreDefaultArgs: launchArguments.optional(),
-    windowPosition: windowPosition.optional(),
-  })
-  .refine(
-    (value) => !(value.cdpEndpoint && value.userDataDir),
-    "已有浏览器目录和 CDP 地址只能选择一项",
-  );
-export const settingsFileSchema = z.strictObject({
+/** background 为默认：有界面浏览器在后台运行，不抢占前台；visible 用于调试；headless 无窗口。 */
+export const browserDisplayModeSchema = z.enum(["background", "visible", "headless"]);
+export type BrowserDisplayMode = z.infer<typeof browserDisplayModeSchema>;
+const browserShape = {
+  cdpEndpoint: browserCdpEndpointSchema.optional(),
+  userDataDir: z
+    .string()
+    .trim()
+    .max(4096)
+    .refine(
+      (value) => !value || (!value.includes("\0") && /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)),
+      "请输入已有独立浏览器目录的绝对路径",
+    )
+    .optional(),
+  displayMode: browserDisplayModeSchema.optional(),
+  headless: z.boolean().optional(),
+  channel: z.string().trim().max(100).optional(),
+  executablePath: z.string().trim().optional(),
+  launchArgs: launchArguments.optional(),
+  ignoreDefaultArgs: launchArguments.optional(),
+  windowPosition: windowPosition.optional(),
+};
+const exclusiveReuse = (value: { cdpEndpoint?: string; userDataDir?: string }) =>
+  !(value.cdpEndpoint && value.userDataDir);
+const reuseMessage = "已有浏览器目录和 CDP 地址只能选择一项";
+/** 用户输入严格校验；配置文件读取保留未知字段，避免新版本写入的字段让旧版本整体失效。 */
+const browser = z.strictObject(browserShape).refine(exclusiveReuse, reuseMessage);
+const storedBrowser = z.looseObject(browserShape).refine(exclusiveReuse, reuseMessage);
+export const settingsFileSchema = z.looseObject({
   version: z.literal(1),
   supermanager: provider.optional(),
   cloudMail: provider.optional(),
   mailboxDomain: mailboxDomainSchema.optional(),
-  browser: browser.optional(),
+  browser: storedBrowser.optional(),
 });
 const patchProvider = provider
   .extend({ clearToken: z.boolean().optional() })
@@ -133,6 +138,8 @@ export interface BacklinksSettingsSnapshot {
   readonly browser: {
     readonly cdpEndpoint?: string;
     readonly userDataDir?: string;
+    readonly displayMode: BrowserDisplayMode;
+    /** 由 displayMode 派生，保留给旧读取方。 */
     readonly headless: boolean;
     readonly channel: string;
     readonly executablePath: string;
@@ -148,4 +155,12 @@ export interface EffectiveBacklinksConfig {
   readonly cloudMail: { readonly baseUrl: string; readonly token: string };
   readonly mailboxDomain: string;
   readonly browser: BacklinksSettingsSnapshot["browser"];
+}
+
+/** 显式 displayMode 优先；旧配置只有 headless 时按其映射，其余一律使用后台模式。 */
+export function resolveBrowserDisplayMode(browser?: {
+  readonly displayMode?: BrowserDisplayMode;
+  readonly headless?: boolean;
+}): BrowserDisplayMode {
+  return browser?.displayMode ?? (browser?.headless === true ? "headless" : "background");
 }

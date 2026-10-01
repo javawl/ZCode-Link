@@ -33,7 +33,7 @@ await runtime.releaseOwnedLeases();
 
 持久配置高于新环境变量，新环境变量高于兼容变量。未配置服务地址和邮箱域名时明确报错，不使用源项目的私人部署地址。`getSettings()` 只返回 `tokenConfigured`，不会返回令牌；普通空白 token 草稿保留原值，`clearToken: true` 保存显式空值并阻止环境变量回退。
 
-浏览器设置包含 `headless`（默认 false）、`channel`（默认 chrome）、`executablePath`、可选 `launchArgs`、`ignoreDefaultArgs`、`windowPosition`。启动参数默认空，不启用源项目的自动化标记隐藏；参数不能改写专用 profile 目录。更改浏览器启动设置后，应先正常关闭当前浏览器再重新启动。
+浏览器设置包含 `displayMode`（`background` / `visible` / `headless`，默认 `background`：有界面 Chrome 在后台运行、不抢前台；旧配置仅有 `headless:true` 时读为 `headless`，快照另返回派生的 `headless`）、`channel`（默认 chrome）、`executablePath`、可选 `launchArgs`、`ignoreDefaultArgs`、`windowPosition`。启动参数默认空，不启用源项目的自动化标记隐藏；参数不能改写专用 profile 目录。更改浏览器启动设置后，应先正常关闭当前浏览器再重新启动。显示模式与页面回收规则见 [浏览器后台静默运行与页面回收规格](../../harness/linkagent/BROWSER-BACKGROUND-SPEC.zh-CN.md)。
 
 ## 工具动作
 

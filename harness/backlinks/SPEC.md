@@ -14,7 +14,7 @@
 - packages/services 的 IBacklinksService：仅 getSettings、updateSettings、listBatches、getBatch 四个方法，通过既有 RPC 供 Desktop/Web UI 使用。
 - UI 只拥有搜索、勾选、展开、加载等临时状态。批次/条目/lease/发布记录唯一事实源是 supermanager；邮箱事实源是 cloud-mail。UI 不自行维护任务队列。
 - 配置唯一持久化适配器为 BacklinksConfigStore，位置为 <dataBaseDir>/.zcode/v2/backlinks.json。dataBaseDir 与现有 ZCODE_DATA_BASE_DIR / homedir 规则一致，由宿主注入。MCP 与 UI 使用同一文件，每次操作读取以支持热更新；原子写入、并发更新串行化、权限 0600；只向 UI 返回 tokenConfigured。
-- 专用发布浏览器由插件浏览器 adapter 独占持久 profile，保留跨运行登录态、文件上传及可人工接管的 headed 模式；相同页面按顺序执行。默认关闭释放自有浏览器；显式 CDP 复用仅清理自建页并断连。第二进程占用 profile 时返回可操作错误，不删除活进程锁强行接管。只允许回收本机、格式明确且 PID 已证实不存在的遗留锁，回收通过独立互斥保护并复核文件身份；未知锁保持不动。
+- 专用发布浏览器由插件浏览器 adapter 独占持久 profile，保留跨运行登录态、文件上传及可人工接管的有界面模式（默认后台运行，见 `harness/linkagent/BROWSER-BACKGROUND-SPEC.zh-CN.md`）；相同页面按顺序执行。默认关闭释放自有浏览器；显式 CDP 复用仅清理自建页并断连。第二进程占用 profile 时返回可操作错误，不删除活进程锁强行接管。只允许回收本机、格式明确且 PID 已证实不存在的遗留锁，回收通过独立互斥保护并复核文件身份；未知锁保持不动。
 
 ```mermaid
 flowchart TD
@@ -35,11 +35,12 @@ flowchart TD
 3. 结果闭合联合：live（公开核验 URL+anchor+target）、submitted、failed（retryable/manual_required）、skipped（skipReason）。结果未知不能自动重放提交。已发布条目及同来源重复项禁止重复发布；保留人工解除后显式选择 manual_required 的能力。
 4. lease 由服务器授予；仅授权领取的 item 可进入执行；约每 30 秒 heartbeat，失败后停止新的不可逆提交；完成或取消后 release。未知回写结果应先读取核对，不重放网站提交。
 5. provider 保留源 HTTP 路由、认证、响应 envelope、错误分类、Retry-After、15 秒单请求超时、取消和有界邮件轮询。变更配置不需重启。邮箱等待默认 120 秒 / 间隔 5 秒；整个 MCP 调用有界。
-6. 配置：supermanager / cloudMail 的 baseUrl 和 write-only token，以及 browser 的 executablePath、headless（默认 false）、channel（默认 chrome，使用已安装的 Google Chrome）。当前外链生产部署的验证邮箱域名固定配置为 `screwdom.org`；Cloud Mail 的域名发现只用于只读诊断和非生产部署，不能在生产配置为空时把返回列表首项当作注册域名。已有 profile / CDP 复用、域名解析及所有权边界见 `harness/linkagent/MAIL-BROWSER-SPEC.md`。token 空白编辑保留旧值，clearToken 显式删除；非法 URL / 类型不能覆盖原配置。
-   浏览器保留可选 launchArgs、ignoreDefaultArgs、windowPosition 配置，以兼容源启动参数；默认使用可见标准 Chrome。禁止参数覆盖 profile 目录。改变浏览器配置后 close 再打开即重新读取；API 地址与令牌每次调用读取。正常 MCP 关闭以五秒有界请求释放已知租约，未知 claim 响应依赖后端租约到期与人工核对。
+6. 配置：supermanager / cloudMail 的 baseUrl 和 write-only token，以及 browser 的 executablePath、displayMode（background / visible / headless，默认 background：有界面 Chrome 在后台运行、不抢前台；旧配置仅 headless:true 时读为 headless，快照另返回派生 headless）、channel（默认 chrome，使用已安装的 Google Chrome）。当前外链生产部署的验证邮箱域名固定配置为 `screwdom.org`；Cloud Mail 的域名发现只用于只读诊断和非生产部署，不能在生产配置为空时把返回列表首项当作注册域名。已有 profile / CDP 复用、域名解析及所有权边界见 `harness/linkagent/MAIL-BROWSER-SPEC.md`。token 空白编辑保留旧值，clearToken 显式删除；非法 URL / 类型不能覆盖原配置。
+   浏览器保留可选 launchArgs、ignoreDefaultArgs、windowPosition 配置，以兼容源启动参数；默认使用后台运行的标准 Chrome；显示模式、页面池与自动回收见 `harness/linkagent/BROWSER-BACKGROUND-SPEC.zh-CN.md`。禁止参数覆盖 profile 目录。改变浏览器配置后 close 再打开即重新读取；API 地址与令牌每次调用读取。正常 MCP 关闭以五秒有界请求释放已知租约，未知 claim 响应依赖后端租约到期与人工核对。
 7. 新环境变量仅用于启动配置 fallback：ZCODE_BACKLINKS_SUPERMANAGER_BASE_URL、ZCODE_BACKLINKS_SUPERMANAGER_TOKEN、ZCODE_BACKLINKS_CLOUD_MAIL_BASE_URL、ZCODE_BACKLINKS_CLOUD_MAIL_TOKEN、ZCODE_BACKLINKS_MAILBOX_DOMAIN。优先级：有效持久化字段 > 新环境变量 > 源版本兼容环境变量（如源配置声明）；缺失时明确报配置错误，不猜测服务地址或邮箱域名。浏览器设置优先配置文件。
-8. backlinks_browser 保留 navigate / snapshot / click / fill / select / press / upload / screenshot / waitFor / bringToFront / closePage，增加 tabs 与 close/status 供观察 OAuth 和正常关闭。保持 source page refs、语义/iframe/坐标 selector、ARIA 快照、上传能力；返回的图片与文本遵守 MCP 内容协议。上传限制在用户工作区的真实文件，明确拒绝越界路径。
+8. backlinks_browser 保留 navigate / snapshot / click / fill / select / press / upload / screenshot / waitFor / bringToFront / closePage，增加 tabs 与 close/status 供观察 OAuth 和正常关闭，以及 hold 标记人工处理页（批次结束统一询问后再 bringToFront）。保持 source page refs、语义/iframe/坐标 selector、ARIA 快照、上传能力；返回的图片与文本遵守 MCP 内容协议。上传限制在用户工作区的真实文件，明确拒绝越界路径。
 9. 技能保留六类站点 playbook、证据与状态、Google 会话；使用实际工具名与 schema。当前外链生产注册统一使用已配置的 `screwdom.org`，不能因为 Cloud Mail 返回其他候选域名就切换注册域名；非生产环境仍可显式选择其他域名。浏览器并发以页面隔离为前提；同域/同项不可并发提交，未知结果交人工核验。
+10. 多操作 backlinks MCP 工具向模型公布普通对象 schema：顶层 `properties` 必须包含 `action` 与对应操作字段，不使用顶层 `anyOf` / `oneOf` 联合 schema；各操作的必填字段映射写入 schema 描述。MCP handler 继续以原 Zod 联合 schema 校验具体操作及必填参数，模型兼容投影不得削弱服务端校验。
 
 ## UI 验收
 

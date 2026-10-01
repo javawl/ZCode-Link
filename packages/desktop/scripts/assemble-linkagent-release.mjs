@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse, stringify } from "yaml";
 
-const targets = ["mac-x64", "mac-arm64", "win-x64", "win-arm64"];
+const allTargets = ["mac-x64", "mac-arm64", "win-x64", "win-arm64"];
 
 async function readSizeAndSha512(path) {
   const hash = createHash("sha512");
@@ -35,10 +35,25 @@ function expectedNames(version, target) {
   return platform === "mac" ? [`${stem}.zip`, `${stem}.dmg`] : [`${stem}.exe`];
 }
 
-export async function assembleLinkAgentRelease({ version, inputs, output }) {
+export async function assembleLinkAgentRelease({
+  version,
+  inputs,
+  output,
+  selectedTargets = allTargets,
+}) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`invalid release version: ${version}`);
   }
+  if (
+    !Array.isArray(selectedTargets) ||
+    selectedTargets.length === 0 ||
+    new Set(selectedTargets).size !== selectedTargets.length ||
+    selectedTargets.some((target) => !allTargets.includes(target))
+  ) {
+    throw new Error(`invalid release targets: ${JSON.stringify(selectedTargets)}`);
+  }
+  // 三平台发布不能隐式要求未构建的 Windows ARM64；仍按固定顺序保留旧版 x64 fallback。
+  const targets = allTargets.filter((target) => selectedTargets.includes(target));
   const collected = { mac: [], win: [] };
   await mkdir(output, { recursive: true });
 
@@ -74,6 +89,7 @@ export async function assembleLinkAgentRelease({ version, inputs, output }) {
     ["win", "latest.yml"],
   ]) {
     const files = collected[platform];
+    if (files.length === 0) continue;
     // x64 排在前面供旧版 fallback 使用；electron-updater 6.8.3 按文件名里的 process.arch 选包。
     const first = files[0];
     await writeFile(
@@ -94,11 +110,18 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
   const version = readArg("--version");
   const inputRoot = readArg("--input-root");
   const output = readArg("--output");
+  const targetArgument = readArg("--targets");
   if (!version || !inputRoot || !output) {
-    throw new Error("usage: assemble-linkagent-release --version V --input-root DIR --output DIR");
+    throw new Error(
+      "usage: assemble-linkagent-release --version V --input-root DIR --output DIR [--targets mac-x64,mac-arm64,win-x64,win-arm64]",
+    );
   }
-  const inputs = Object.fromEntries(targets.map((target) => [target, join(inputRoot, target)]));
-  const files = await assembleLinkAgentRelease({ version, inputs, output });
+  if (process.argv.includes("--targets") && !targetArgument) {
+    throw new Error("invalid release targets: --targets requires a comma-separated selection");
+  }
+  const selectedTargets = targetArgument?.split(",").map((target) => target.trim()) ?? allTargets;
+  const inputs = Object.fromEntries(allTargets.map((target) => [target, join(inputRoot, target)]));
+  const files = await assembleLinkAgentRelease({ version, inputs, output, selectedTargets });
   console.log(
     `[linkagent-release] verified ${files.mac.length} macOS and ${files.win.length} Windows artifacts in ${output}`,
   );

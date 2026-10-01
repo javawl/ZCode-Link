@@ -61,9 +61,12 @@ export const backlinksEn: Record<string, string> = {
   "backlinks.browser": "Publishing browser",
   "backlinks.channel": "Browser channel",
   "backlinks.executable": "Browser executable path (optional)",
-  "backlinks.headless": "Run without a visible browser window",
-  "backlinks.headlessHelp":
-    "Use a visible browser for the first Google sign-in or any manual verification.",
+  "backlinks.displayMode": "Browser display mode",
+  "backlinks.displayModeBackground": "Background (recommended)",
+  "backlinks.displayModeVisible": "Visible window",
+  "backlinks.displayModeHeadless": "No window (headless)",
+  "backlinks.displayModeHelp":
+    "Background (recommended): Chrome runs tucked away at a screen corner and never takes over your mouse or keyboard; pages that need manual verification are kept and offered to you after the batch. Visible window: shows the browser window, for debugging. No window: manual verification and Google sign-in are unavailable.",
   "backlinks.save": "Save settings",
   "backlinks.saving": "Saving…",
   "backlinks.saved":
@@ -131,8 +134,12 @@ export const backlinksZh: Record<string, string> = {
   "backlinks.browser": "发布专用浏览器",
   "backlinks.channel": "浏览器通道",
   "backlinks.executable": "浏览器可执行文件路径（可选）",
-  "backlinks.headless": "在无窗口模式下运行浏览器",
-  "backlinks.headlessHelp": "首次 Google 登录或需要人工验证时，请使用有窗口模式。",
+  "backlinks.displayMode": "浏览器显示方式",
+  "backlinks.displayModeBackground": "后台（推荐）",
+  "backlinks.displayModeVisible": "可见窗口",
+  "backlinks.displayModeHeadless": "无窗口",
+  "backlinks.displayModeHelp":
+    "后台（推荐）：Chrome 停靠在屏幕角落之外运行，不会抢占鼠标和键盘；需要人工验证的页面会保留，批次结束后再询问你是否处理。可见窗口：显示浏览器窗口，用于调试。无窗口：无法进行人工验证和 Google 登录。",
   "backlinks.save": "保存设置",
   "backlinks.saving": "保存中…",
   "backlinks.saved": "设置已保存。API 配置立即生效，浏览器配置在下次浏览器会话生效。",

@@ -70,6 +70,21 @@ export function createBacklinksToolHandlers(options: BacklinksHandlerOptions = {
   const shutdownController = new AbortController();
   let browser: Promise<BrowserRuntime> | undefined;
   let browserIdentity: string | undefined;
+  /** 空闲关闭的旧运行时释放 profile 锁之前，新运行时不能启动。 */
+  let retiring: Promise<void> = Promise.resolve();
+  /** 当前运行时启动时使用的浏览器设置；设置变更且运行时空闲时按新设置重建。 */
+  let browserSettingsKey: string | undefined;
+  const settingsKeyOf = ({ browser: value }: BacklinksSettingsSnapshot) =>
+    JSON.stringify([
+      value.displayMode,
+      value.channel,
+      value.executablePath,
+      value.userDataDir ?? "",
+      value.cdpEndpoint ?? "",
+      value.launchArgs ?? [],
+      value.ignoreDefaultArgs ?? [],
+      value.windowPosition ?? "",
+    ]);
 
   const identityFor = (context: BacklinksRequestContext) =>
     context.workspace_identity?.trim() || workspacePath;
@@ -87,9 +102,25 @@ export function createBacklinksToolHandlers(options: BacklinksHandlerOptions = {
       throw new Error("The browser request belongs to a different workspace identity.");
     }
     browserIdentity = identity;
+    if (browser && browserSettingsKey !== undefined) {
+      const current = browser;
+      const settings = await getSettings().catch(() => undefined);
+      const instance = await current.catch(() => undefined);
+      // 用户修改了显示方式等浏览器设置：没有任何页面与排队动作时立即按新设置重建，不必等待空闲关闭。
+      if (
+        settings &&
+        settingsKeyOf(settings) !== browserSettingsKey &&
+        instance?.isIdle() &&
+        browser === current
+      ) {
+        browser = undefined;
+        retiring = instance.close().catch(() => undefined);
+      }
+    }
     if (!browser) {
-      const starting = getSettings().then((settings) =>
-        (options.createBrowser ?? createBacklinkBrowserRuntime)({
+      const starting: Promise<BrowserRuntime> = retiring.then(getSettings).then((settings) => {
+        browserSettingsKey = settingsKeyOf(settings);
+        return (options.createBrowser ?? createBacklinkBrowserRuntime)({
           profilePath: join(
             dataBaseDir,
             ".zcode",
@@ -102,20 +133,42 @@ export function createBacklinksToolHandlers(options: BacklinksHandlerOptions = {
           userDataDir: settings.browser.userDataDir || undefined,
           cdpEndpoint: settings.browser.cdpEndpoint || undefined,
           workspacePath,
-          headless: settings.browser.headless,
+          displayMode: settings.browser.displayMode,
           channel: settings.browser.channel,
           executablePath: settings.browser.executablePath || undefined,
           launchArgs: settings.browser.launchArgs,
           ignoreDefaultArgs: settings.browser.ignoreDefaultArgs,
           windowPosition: settings.browser.windowPosition,
-        }),
-      );
+          // 空闲关闭后下次调用重新读取设置，显示方式等浏览器设置变更由此生效。
+          onIdleClose: (closed) => {
+            retiring = closed;
+            if (browser === starting) {
+              browser = undefined;
+              browserIdentity = undefined;
+            }
+          },
+        });
+      });
       browser = starting;
       void starting.catch(() => {
         if (browser === starting) browser = undefined;
       });
     }
     return browser;
+  }
+
+  /**
+   * 条目结果已被后台接受后才处理页面：结束的条目回收页面，manual_required 保留给批次末尾人工处理。
+   * 不为此启动浏览器；最多等待 5 秒（排在同页进行中的动作之后），失败不影响已成功的回写。
+   */
+  async function settleItemPages(command: Command | z.infer<typeof backlinkWorkerCommandSchema>) {
+    if (command.action !== "item_result" || !browser) return;
+    const outcome =
+      command.status === "failed" && command.failureMode === "manual_required" ? "hold" : "recycle";
+    const settle = browser
+      .then((instance) => instance.releaseItemPages(command.itemId, outcome))
+      .catch(() => undefined);
+    await Promise.race([settle, new Promise((resolve) => setTimeout(resolve, 5_000).unref())]);
   }
 
   return {
@@ -149,24 +202,25 @@ export function createBacklinksToolHandlers(options: BacklinksHandlerOptions = {
           if (name === "backlinks") {
             const command = backlinksCommandSchema.parse(input);
             const result = await execute(command, signal, requestContext);
+            await settleItemPages(command);
             return toBacklinksMcpResult({ ...result }, artifactDirectory);
           }
           if (name === "backlinks_worker") {
             const command = backlinkWorkerCommandSchema.parse(input);
             const result = await execute(command, signal, requestContext);
+            await settleItemPages(command);
             return toBacklinksMcpResult({ ...result }, artifactDirectory);
           }
           if (name === "backlinks_cleanup") {
-            z.object({}).strict().parse(input ?? {});
+            z.object({})
+              .strict()
+              .parse(input ?? {});
             const sessionId = requestContext.session_id?.trim();
             if (!sessionId) {
               throw new Error("backlinks_cleanup requires a host-injected session context.");
             }
             await releaseSessionLeases(sessionId, signal);
-            return toBacklinksMcpResult(
-              { released: true, sessionId },
-              artifactDirectory,
-            );
+            return toBacklinksMcpResult({ released: true, sessionId }, artifactDirectory);
           }
           if (name === "backlinks_browser") {
             const command = backlinkBrowserInputSchema.parse(input);

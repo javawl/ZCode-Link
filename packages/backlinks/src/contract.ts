@@ -7,8 +7,17 @@ export type {
   BacklinksCommandResult,
   BacklinkWorkerCommand,
 } from "./domain/commands.js";
-export { backlinksSettingsPatchSchema, browserCdpEndpointSchema } from "./domain/settings.js";
-export type { BacklinksSettingsPatch, BacklinksSettingsSnapshot } from "./domain/settings.js";
+export {
+  backlinksSettingsPatchSchema,
+  browserCdpEndpointSchema,
+  browserDisplayModeSchema,
+  resolveBrowserDisplayMode,
+} from "./domain/settings.js";
+export type {
+  BacklinksSettingsPatch,
+  BacklinksSettingsSnapshot,
+  BrowserDisplayMode,
+} from "./domain/settings.js";
 export type {
   BacklinkBatchOperations,
   MailboxOperations,

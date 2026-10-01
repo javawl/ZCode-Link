@@ -117,7 +117,12 @@ function App() {
     supermanager: { baseUrl: "https://batch.example", tokenConfigured: true },
     cloudMail: { baseUrl: "https://mail.example/api", tokenConfigured: true },
     mailboxDomain: "mail.example",
-    browser: { headless: false, channel: "chromium", executablePath: "" },
+    browser: {
+      displayMode: "background",
+      headless: false,
+      channel: "chromium",
+      executablePath: "",
+    },
   });
   return (
     <ZCodeIntlProvider initialLocale="zh-CN">

@@ -30,7 +30,7 @@ test(
       JSON.stringify({
         version: 1,
         supermanager: { baseUrl: fixture.baseUrl, token: "local-fixture-token" },
-        browser: { headless: true, channel: "chrome" },
+        browser: { displayMode: "headless", channel: "chrome" },
       }),
       { mode: 0o600 },
     );

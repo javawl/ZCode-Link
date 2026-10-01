@@ -19,7 +19,7 @@ sequenceDiagram
     participant M as Electron main / autoUpdater
     participant U as 用户界面
     P->>P: 构建、签名、架构与校验值核验
-    P->>G: 上传四架构安装包、macOS ZIP、blockmap、合并后的 latest 元数据
+    P->>G: 上传所选架构安装包、macOS ZIP、blockmap、合并后的 latest 元数据
     P->>G: 全部核验后公开版本
     U->>M: 检查更新 / 安装命令
     M->>G: 查询所选通道的最新版本
@@ -31,14 +31,15 @@ sequenceDiagram
 
 ## 打包与发布约束
 
-- macOS arm64/x64 同时构建 DMG 和 ZIP；Windows arm64/x64 构建 NSIS EXE。汇总元数据时保留每个架构的文件和校验值，禁止后一次构建覆盖前一次生成的 `latest-mac.yml` 或 `latest.yml`。
+- macOS arm64/x64 同时构建 DMG 和 ZIP；Windows arm64/x64 构建 NSIS EXE。每次发布可通过汇总脚本的 `--targets` 显式指定平台集合，默认仍为全部四架构。所选平台必须有效、非空且不重复；只复制所选平台的文件，并只生成这些平台对应的升级清单。清单保持 x64 优先的顺序，禁止后一次构建覆盖前一次生成的 `latest-mac.yml` 或 `latest.yml`。
+- `v4.0.0` 的平台集合固定为 `mac-arm64,mac-x64,win-x64`，不构建或发布 Windows ARM64 产物。Release 源码提交先在本地固定，再从该提交构建，确保包内构建标识与发布标签一致。本地旧版本产物只在新 Release 的全部附件与校验值公开核验通过后清理；保留当前版本、源码和用户配置。
 - 正式 macOS 自动更新要求有效的 Developer ID Application 签名，面向用户发布还须完成公证。Windows 发布建议 Authenticode 签名。缺少 macOS 凭据时，未签名包只能作为测试产物，不能宣称可在线升级。
 - 打包命令只产生本地产物，不隐式上传；推送与 Release 公开发布由单独步骤执行。
 - 用户数据根和应用 ID 不因更新变化；升级失败保留当前已安装版本和设置。回滚通过发布更高版本号的修复版完成，不覆盖同名版本或重写旧元数据。
 
 ## 验收
 
-1. 已安装的上一个可更新正式版在 macOS arm64/x64、Windows arm64/x64 上发现新版本，文件名与架构一致。
+1. 已安装的上一个可更新正式版在本次选择的平台上发现新版本，文件名与架构一致。
 2. 无新版本、网络错误、校验失败、取消下载和重启安装均展示准确状态；用户设置与任务数据仍在。
 3. 稳定通道不接收预发布，开启预览开关后可接收预发布；Preview 身份不会请求正式仓库。
-4. 构建输出包含完整的四架构产物及双平台元数据，校验值与真实文件一致，公开 Release 前全部下载链接可用。
+4. 构建输出包含完整的所选平台产物及对应元数据，不引用未选平台的旧文件；校验值与真实文件一致，公开 Release 前全部下载链接可用。

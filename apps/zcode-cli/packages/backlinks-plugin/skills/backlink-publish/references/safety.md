@@ -30,6 +30,6 @@
 
 ## 人工处理
 
-CAPTCHA、Google 再验证、身份声明和异常授权交用户在可见窗口处理；`bringToFront` 只作用于明确的 `page`。headless 或远程模式必须说明窗口所在的宿主和交互限制，不声称用户已可见。
+CAPTCHA、Google 再验证、身份声明和异常授权交用户在可见窗口处理。批次发布中遇到这些阻碍时，子代理写 `failed + manual_required` 并 `hold` 保留页面，不切换前台；主任务在本次运行的最后一个批次释放租约后，就本次运行所有批次的 held 页只询问一次（任何批次仍在执行时不得 `bringToFront`），用户同意后才逐个 `bringToFront`；显示后只由用户操作，主任务不再填写、点击、提交或回写这些条目。用户主动发起的 Google 登录（google-session）可直接 `bringToFront`。`bringToFront` 只作用于明确的 `page`。`displayMode` 为 `"headless"` 或远程模式时必须说明窗口所在的宿主和交互限制，不声称用户已可见。
 
 用户完成验证后复用会话，仍应重新核对条目状态与旧提交；解除验证不会自动解除“不得重复提交”的约束。

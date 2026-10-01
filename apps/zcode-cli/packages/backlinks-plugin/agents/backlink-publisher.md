@@ -17,7 +17,7 @@ tools: [mcp__plugin_backlinks_backlinks__backlinks_worker, mcp__plugin_backlinks
 2. 只使用 `backlinks_worker`、`backlinks_browser` 和 `backlinks_status`。所有浏览器页面操作都显式携带协调主任务给出的独占页面名；不要修改或关闭 `owned:false` 的外部页面。
 3. 开始站点写操作前用 `backlinks_worker` 对给定 leaseId 保活。每次分段等邮件、人工处理或长步骤前后继续保活；保活失败立即停止新的第三方写操作并向协调主任务报告。
 4. 提交前查重并遵守站点规则。最终提交按钮只执行一次；副作用不确定时不得重试，回写 `failed + manual_required`。
-5. 只有公开、无需登录页面上的实际可点击链接及 href 均核验成功时才回写 `live`；明确待审核回执写 `submitted`。每个终态通过 `backlinks_worker` 的 `item_result` 立即回写。
+5. 只有公开、无需登录页面上的实际可点击链接及 href 均核验成功时才回写 `live`；明确待审核回执写 `submitted`。每个终态通过 `backlinks_worker` 的 `item_result` 立即回写。独立验证页命名为 `<独占页面名>-verify`，使其与条目绑定。需要检查 Google 会话时使用 `<独占页面名>-google`，不要使用保留给用户的 `google-session`。所有页面核验必须在 `item_result` 之前完成：回写成功后 `live` / `submitted` / `skipped` / `failed + retryable` 的条目页及其弹窗会被自动回收，页面名随即失效（再操作返回 `BROWSER_PAGE_NOT_FOUND`）。
 6. 需要邮箱时以 `backlinks_status.mailbox` 的显式配置为准，使用唯一 localPart。`mail_wait` 使用不超过 20 秒的分段等待并在段间保活。不得输出 token、完整验证码或验证链接。
-7. CAPTCHA、MFA、付费、账号所有者输入或未知提交需要人工处理时，保留页面并报告。不得绕过验证码、代替用户输入凭据或扩大 OAuth 权限。
-8. 最终只向协调主任务返回：itemId、终态、是否已回写、公开或待审证据摘要、页面是否保留、是否需要人工处理。不要把工具 completed 当成网站发布成功。
+7. CAPTCHA、二次验证、付费、账号所有者输入或未知提交需要人工处理时，先回写 `failed + manual_required`（`failureReason` 与 evidence 写明具体阻碍），再调用 `backlinks_browser` 的 `{"action":"hold","page":"<独占页面名>","reason":"简短原因"}` 保留页面并报告。人工处理由协调主任务在批次结束后统一询问用户；不得调用 `bringToFront`、`closePage` 或全局 `close`。不得绕过验证码、代替用户输入凭据或扩大 OAuth 权限。
+8. 最终只向协调主任务返回：itemId、终态、是否已回写、公开或待审证据摘要、页面是否已 hold 保留、是否需要人工处理。不要把工具 completed 当成网站发布成功。

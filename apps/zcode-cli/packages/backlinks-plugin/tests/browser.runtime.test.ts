@@ -16,6 +16,8 @@ async function fixture() {
   const runtime = createBacklinkBrowserRuntime({
     profilePath: join(root, "profile"),
     workspacePath,
+    displayMode: "visible",
+    focusControl: null,
     loadChromium: async () => fake.chromium,
   });
   return { root, workspacePath, fake, runtime };
@@ -50,6 +52,9 @@ test("persistent browser launches lazily, reuses named tabs and exposes observed
       running: false,
       headless: false,
       persistent: true,
+      displayMode: "visible",
+      pages: 0,
+      heldPages: 0,
     });
     assert.equal(fake.launches.length, 0);
     await runtime.execute(

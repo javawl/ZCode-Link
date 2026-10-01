@@ -148,3 +148,190 @@ test("cleanup releases leases only for the host-injected current session", async
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("successful item results recycle or hold only an already running browser", async () => {
+  const root = await mkdtemp(join(tmpdir(), "zcode-backlinks-settle-"));
+  const released: Array<[number, string]> = [];
+  let browserStarts = 0;
+  let failRelease = false;
+  const handlers = createBacklinksToolHandlers({
+    dataBaseDir: root,
+    workspacePath: root,
+    getSettings: async () => ({
+      supermanager: { baseUrl: "", tokenConfigured: false },
+      cloudMail: { baseUrl: "", tokenConfigured: false },
+      mailboxDomain: "",
+      browser: {
+        displayMode: "background",
+        headless: false,
+        channel: "chrome",
+        executablePath: "",
+      },
+    }),
+    execute: async (input) => ({ action: input.action, summary: "ok", data: {} }),
+    createBrowser: (options) => {
+      browserStarts += 1;
+      assert.equal(options.displayMode, "background");
+      return {
+        execute: async () => ({ kind: "acked" as const }),
+        releaseItemPages: async (itemId, outcome) => {
+          if (failRelease) throw new Error("page already gone");
+          released.push([itemId, outcome]);
+        },
+        close: async () => {},
+      };
+    },
+  });
+  const context = { requestContext: { trace_id: "t", session_id: "s", workspace_path: root } };
+  const live = {
+    action: "item_result",
+    itemId: 5,
+    status: "live",
+    publicUrl: "https://site.test/entry",
+    anchorText: "Anchor",
+    targetUrl: "https://target.test/",
+  };
+  try {
+    await handlers.call("backlinks_worker", live, context);
+    assert.equal(browserStarts, 0, "results never launch a browser just to recycle pages");
+    await handlers.call("backlinks_browser", { action: "tabs" }, context);
+    await handlers.call("backlinks_worker", live, context);
+    await handlers.call(
+      "backlinks",
+      {
+        action: "item_result",
+        itemId: 6,
+        status: "failed",
+        failureMode: "manual_required",
+        failureReason: "CAPTCHA",
+      },
+      context,
+    );
+    await handlers.call(
+      "backlinks_worker",
+      { action: "item_result", itemId: 7, status: "skipped", skipReason: "duplicate" },
+      context,
+    );
+    await handlers.call(
+      "backlinks_worker",
+      {
+        action: "item_result",
+        itemId: 8,
+        status: "failed",
+        failureMode: "retryable",
+        failureReason: "timeout before submit",
+      },
+      context,
+    );
+    await handlers.call("backlinks_worker", { action: "lease_heartbeat", leaseId: 1 }, context);
+    assert.deepEqual(released, [
+      [5, "recycle"],
+      [6, "hold"],
+      [7, "recycle"],
+      [8, "recycle"],
+    ]);
+    failRelease = true;
+    const stillOk = await handlers.call("backlinks_worker", live, context);
+    assert.equal(stillOk.isError, undefined, "page cleanup failures never fail a recorded result");
+  } finally {
+    await handlers.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an idle-closed browser is rebuilt from current settings after it releases the profile", async () => {
+  const root = await mkdtemp(join(tmpdir(), "zcode-backlinks-idle-rebuild-"));
+  let displayMode: "background" | "headless" = "headless";
+  const created: Array<{ displayMode?: string; onIdleClose?: (closed: Promise<void>) => void }> =
+    [];
+  const handlers = createBacklinksToolHandlers({
+    dataBaseDir: root,
+    workspacePath: root,
+    getSettings: async () => ({
+      supermanager: { baseUrl: "", tokenConfigured: false },
+      cloudMail: { baseUrl: "", tokenConfigured: false },
+      mailboxDomain: "",
+      browser: {
+        displayMode,
+        headless: displayMode === "headless",
+        channel: "chrome",
+        executablePath: "",
+      },
+    }),
+    execute: async (input) => ({ action: input.action, summary: "ok", data: {} }),
+    createBrowser: (options) => {
+      created.push(options);
+      return {
+        execute: async () => ({ kind: "acked" as const }),
+        releaseItemPages: async () => {},
+        close: async () => {},
+      };
+    },
+  });
+  const context = { requestContext: { trace_id: "t", session_id: "s", workspace_path: root } };
+  try {
+    await handlers.call("backlinks_browser", { action: "tabs" }, context);
+    assert.equal(created.length, 1);
+    assert.equal(created[0]!.displayMode, "headless");
+    displayMode = "background";
+    let releaseProfile!: () => void;
+    created[0]!.onIdleClose!(new Promise<void>((resolve) => (releaseProfile = resolve)));
+    const next = handlers.call("backlinks_browser", { action: "tabs" }, context);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(created.length, 1, "the new runtime waits for the old one to release the profile");
+    releaseProfile();
+    await next;
+    assert.equal(created.length, 2);
+    assert.equal(created[1]!.displayMode, "background", "the changed setting now applies");
+  } finally {
+    await handlers.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("changed browser settings rebuild the runtime at once only when it holds nothing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "zcode-backlinks-settings-rebuild-"));
+  let displayMode: "background" | "visible" = "background";
+  let idle = false;
+  const created: string[] = [];
+  const closed: string[] = [];
+  const handlers = createBacklinksToolHandlers({
+    dataBaseDir: root,
+    workspacePath: root,
+    getSettings: async () => ({
+      supermanager: { baseUrl: "", tokenConfigured: false },
+      cloudMail: { baseUrl: "", tokenConfigured: false },
+      mailboxDomain: "",
+      browser: { displayMode, headless: false, channel: "chrome", executablePath: "" },
+    }),
+    execute: async (input) => ({ action: input.action, summary: "ok", data: {} }),
+    createBrowser: (options) => {
+      const mode = options.displayMode!;
+      created.push(mode);
+      return {
+        execute: async () => ({ kind: "acked" as const }),
+        releaseItemPages: async () => {},
+        isIdle: () => idle,
+        close: async () => {
+          closed.push(mode);
+        },
+      };
+    },
+  });
+  const context = { requestContext: { trace_id: "t", session_id: "s", workspace_path: root } };
+  try {
+    await handlers.call("backlinks_browser", { action: "tabs" }, context);
+    displayMode = "visible";
+    await handlers.call("backlinks_browser", { action: "tabs" }, context);
+    assert.deepEqual(created, ["background"], "pages or held pages keep the running browser");
+    idle = true;
+    await handlers.call("backlinks_browser", { action: "tabs" }, context);
+    assert.deepEqual(created, ["background", "visible"], "an idle browser is rebuilt at once");
+    assert.deepEqual(closed, ["background"]);
+    await handlers.call("backlinks_browser", { action: "tabs" }, context);
+    assert.deepEqual(created, ["background", "visible"], "unchanged settings reuse the runtime");
+  } finally {
+    await handlers.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

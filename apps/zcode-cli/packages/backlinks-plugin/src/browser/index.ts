@@ -1,4 +1,4 @@
-import type { BrowserType } from "playwright-core";
+import type { Page } from "playwright-core";
 import { realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { browserCdpEndpointSchema } from "@zcode/backlinks";
@@ -10,47 +10,43 @@ import {
   hasBrowserSideEffect,
   MAX_BROWSER_TIMEOUT_MS,
   type BacklinkBrowserCommand,
+  type BacklinkBrowserDisplayMode,
   type BacklinkBrowserExecutionContext,
   type BacklinkBrowserResult,
+  withBrowserAbort,
 } from "./contract.js";
 import { acquireBrowserProfile } from "./profile-lock.js";
-import {
-  chromiumLaunchArguments,
-  validateBrowserLaunchOptions,
-  type BacklinkBrowserLaunchOptions,
-} from "./launch-options.js";
+import { chromiumLaunchArguments, validateBrowserLaunchOptions } from "./launch-options.js";
+import { createBrowserPresenter } from "./presentation.js";
+import type {
+  BacklinkBrowserOptions,
+  BacklinkBrowserRuntime,
+  BacklinkItemPageOutcome,
+} from "./runtime-options.js";
+import { KeyedSerialQueues } from "./serial-queues.js";
 import { BacklinkBrowserSession } from "./session.js";
 
-export interface BacklinkBrowserOptions extends BacklinkBrowserLaunchOptions {
-  profilePath: string;
-  workspacePath: string;
-  headless?: boolean;
-  channel?: string;
-  executablePath?: string;
-  userDataDir?: string;
-  cdpEndpoint?: string;
-  timeoutMs?: number;
-  loadChromium?: () => Promise<
-    Pick<BrowserType, "launchPersistentContext"> & Partial<Pick<BrowserType, "connectOverCDP">>
-  >;
-}
+export type {
+  BacklinkBrowserOptions,
+  BacklinkBrowserRuntime,
+  BacklinkItemPageOutcome,
+} from "./runtime-options.js";
 
-export interface BacklinkBrowserRuntime {
-  execute(
-    command: BacklinkBrowserCommand,
-    context: BacklinkBrowserExecutionContext,
-  ): Promise<BacklinkBrowserResult>;
-  close(): Promise<void>;
-}
+const SWEEP_INTERVAL_MS = 60_000;
 
 class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
   readonly #options: BacklinkBrowserOptions;
   readonly #timeoutMs: number;
-  readonly #queues = new Map<string, Promise<unknown>>();
+  readonly #displayMode: BacklinkBrowserDisplayMode;
+  readonly #now: () => number;
+  readonly #queues = new KeyedSerialQueues();
   #session?: BacklinkBrowserSession;
   #launch?: Promise<BacklinkBrowserSession>;
   #closing?: Promise<void>;
+  #sweeper?: ReturnType<typeof setInterval>;
   #disposed = false;
+  #idleClosing = false;
+  #retiredByIdle = false;
 
   constructor(options: BacklinkBrowserOptions) {
     validateBrowserLaunchOptions(options);
@@ -75,6 +71,8 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
       ...(options.ignoreDefaultArgs ? { ignoreDefaultArgs: [...options.ignoreDefaultArgs] } : {}),
     };
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_BROWSER_TIMEOUT_MS;
+    this.#displayMode = options.displayMode ?? (options.headless ? "headless" : "background");
+    this.#now = options.now ?? Date.now;
     if (
       !Number.isSafeInteger(this.#timeoutMs) ||
       this.#timeoutMs < 1 ||
@@ -103,32 +101,31 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
         "Browser execution requires a trace and session context",
       );
     assertBrowserNotAborted(context.signal);
-    if (this.#disposed || this.#closing)
-      throw new BacklinkBrowserError(
-        "BROWSER_SESSION_CLOSED",
-        "Browser runtime is closing or has been disposed",
-      );
+    await this.#awaitIdleClose();
+    this.#assertOpen();
     const command = parsed.data;
-    if (command.action === "status")
+    if (command.action === "status") {
+      const session = this.#session && !this.#session.closed ? this.#session : undefined;
       return {
         kind: "status",
-        running: Boolean(this.#session && !this.#session.closed),
-        headless: this.#options.headless ?? false,
+        running: Boolean(session),
+        headless: this.#displayMode === "headless",
         persistent: true,
+        displayMode: this.#displayMode,
+        pages: session?.pageCount ?? 0,
+        heldPages: session?.heldCount ?? 0,
       };
+    }
     if (command.action === "close") {
       await this.closeSession();
       return { kind: "acked" };
     }
     let dispatched = false;
     const key = "page" in command ? command.page : "__tabs__";
-    const operation = (this.#queues.get(key) ?? Promise.resolve()).then(async () => {
+    const operation = this.#enqueue(key, async () => {
       assertBrowserNotAborted(context.signal);
-      if (this.#disposed || this.#closing)
-        throw new BacklinkBrowserError(
-          "BROWSER_SESSION_CLOSED",
-          "Browser runtime is closing or has been disposed",
-        );
+      await this.#awaitIdleClose();
+      this.#assertOpen();
       if (command.action === "tabs") {
         const session = this.#options.cdpEndpoint
           ? await this.ensureSession()
@@ -154,20 +151,31 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
         );
       }
     });
-    const tail = operation.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.#queues.set(key, tail);
-    void tail.then(() => {
-      if (this.#queues.get(key) === tail) this.#queues.delete(key);
-    });
     // 中文依据：取消只提前结束调用方等待；真实 Playwright 动作仍占据原页队列直到完成，防止后续提交与未知动作交错。
-    return await withAbort(
+    return await withBrowserAbort(
       operation,
       context.signal,
       () => dispatched && hasBrowserSideEffect(command),
     );
+  }
+
+  async releaseItemPages(itemId: number, outcome: BacklinkItemPageOutcome): Promise<void> {
+    const session = this.#session;
+    if (!session || session.closed || this.#disposed) return;
+    // 回收排入各页现有串行队列，永远不会在同页动作执行中清空或关闭页面。
+    await Promise.allSettled(
+      session.itemPageNames(itemId).map((name) =>
+        this.#enqueue(name, async () => {
+          if (outcome === "hold") session.hold(name, "manual_required");
+          else await session.recycle(name);
+        }),
+      ),
+    );
+  }
+
+  isIdle(): boolean {
+    if (this.#queues.size > 0 || this.#launch || this.#closing) return false;
+    return !this.#session || this.#session.closed || this.#session.vacant;
   }
 
   async close(): Promise<void> {
@@ -175,11 +183,86 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
     await this.closeSession();
   }
 
+  /** 内部空闲关闭不是用户的关闭指令：等待其完成后按需重新启动。 */
+  async #awaitIdleClose(): Promise<void> {
+    while (this.#idleClosing && this.#closing && !this.#retiredByIdle)
+      await this.#closing.catch(() => undefined);
+  }
+
+  #assertOpen(): void {
+    if (this.#retiredByIdle)
+      throw new BacklinkBrowserError(
+        "BROWSER_SESSION_CLOSED",
+        "The idle browser was closed before this action started; retry the action to relaunch it",
+      );
+    if (this.#disposed || this.#closing)
+      throw new BacklinkBrowserError(
+        "BROWSER_SESSION_CLOSED",
+        "Browser runtime is closing or has been disposed",
+      );
+  }
+
+  #enqueue<T>(key: string, task: () => Promise<T>): Promise<T> {
+    return this.#queues.run(key, task);
+  }
+
+  #startSweeper(session: BacklinkBrowserSession): void {
+    this.#stopSweeper();
+    const timer = setInterval(() => {
+      // 定时器回调中的拒绝没有调用方处理，未捕获会终止 MCP 进程。
+      void this.#sweep(session).catch((cause: unknown) =>
+        process.stderr.write(
+          `[backlinks-browser] idle sweep failed: ${cause instanceof Error ? cause.message.split("\n")[0] : "unknown error"}\n`,
+        ),
+      );
+    }, this.#options.sweepIntervalMs ?? SWEEP_INTERVAL_MS);
+    timer.unref?.();
+    this.#sweeper = timer;
+  }
+
+  #stopSweeper(): void {
+    if (this.#sweeper) clearInterval(this.#sweeper);
+    this.#sweeper = undefined;
+  }
+
+  /** 空闲清扫：跳过正在执行动作的页面；整个浏览器空闲时关闭（profile 登录态保留）。 */
+  async sweepNow(): Promise<void> {
+    if (this.#session) await this.#sweep(this.#session);
+  }
+
+  async #sweep(session: BacklinkBrowserSession): Promise<void> {
+    if (session !== this.#session || session.closed || this.#disposed || this.#closing) return;
+    const plan = session.sweepPlan(this.#now());
+    await Promise.allSettled(
+      plan.recycle
+        .filter((name) => !this.#queues.has(name))
+        .map((name) => this.#enqueue(name, () => session.recycle(name))),
+    );
+    if (!plan.browserIdle || this.#queues.size > 0 || session !== this.#session) return;
+    if (this.#options.onIdleClose) {
+      // 空闲关闭即结束本运行时，宿主按最新设置重建；显示方式等浏览器设置变更由此生效。
+      this.#retiredByIdle = true;
+      this.#disposed = true;
+      const closed = this.closeSession();
+      this.#options.onIdleClose(closed.catch(() => undefined));
+      await closed;
+      return;
+    }
+    this.#idleClosing = true;
+    try {
+      await this.closeSession();
+    } finally {
+      this.#idleClosing = false;
+    }
+  }
+
   private async ensureSession(): Promise<BacklinkBrowserSession> {
     if (this.#session && !this.#session.closed) return this.#session;
     if (this.#session) {
-      await this.#session.close();
+      // 上一个会话缓存的关闭失败不能阻止重新启动。
+      const stale = this.#session;
       this.#session = undefined;
+      await stale.close().catch(() => undefined);
     }
     this.#launch ??= this.launch().finally(() => {
       this.#launch = undefined;
@@ -201,6 +284,24 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
       }
     }
     const release = await acquireBrowserProfile(profilePath);
+    let revealing = () => false;
+    let foreign: (page: Page) => boolean = () => false;
+    const presenter = createBrowserPresenter({
+      mode: this.#displayMode,
+      attached: Boolean(this.#options.cdpEndpoint),
+      profilePath,
+      ...(this.#options.focusControl !== undefined ? { focus: this.#options.focusControl } : {}),
+      isRevealing: () => revealing(),
+      isForeign: (page) => foreign(page),
+      warn: (message) => process.stderr.write(`[backlinks-browser] ${message}\n`),
+    });
+    const sessionOptions = {
+      timeoutMs: this.#timeoutMs,
+      workspacePath: this.#options.workspacePath,
+      releaseProfile: release,
+      presenter,
+      now: this.#now,
+    };
     try {
       const chromium = this.#options.loadChromium
         ? await this.#options.loadChromium()
@@ -215,19 +316,20 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
           await connection.close();
           throw new Error("No default context");
         }
-        const session = new BacklinkBrowserSession(
+        const session = new BacklinkBrowserSession({
+          ...sessionOptions,
           context,
-          this.#timeoutMs,
-          this.#options.workspacePath,
-          release,
-          () => connection.close(),
-        );
+          disconnect: () => connection.close(),
+        });
+        revealing = () => session.revealedCount > 0;
+        foreign = (page) => !session.owns(page);
         this.#session = session;
+        this.#startSweeper(session);
         return session;
       }
       const channel = this.#options.channel ?? "chrome";
       const browserContext = await chromium.launchPersistentContext(profilePath, {
-        headless: this.#options.headless ?? false,
+        headless: this.#displayMode === "headless",
         timeout: this.#timeoutMs,
         ...(this.#options.executablePath
           ? { executablePath: this.#options.executablePath }
@@ -240,13 +342,13 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
           ? { ignoreDefaultArgs: [...this.#options.ignoreDefaultArgs] }
           : {}),
       });
-      const session = new BacklinkBrowserSession(
-        browserContext,
-        this.#timeoutMs,
-        this.#options.workspacePath,
-        release,
-      );
+      const session = new BacklinkBrowserSession({ ...sessionOptions, context: browserContext });
+      revealing = () => session.revealedCount > 0;
+      foreign = (page) => !session.owns(page);
+      // 启动会抢占前台：后台模式下立即停靠窗口并归还前台；失败只记录，不阻塞发布。
+      await presenter.afterLaunch(browserContext).catch(() => undefined);
       this.#session = session;
+      this.#startSweeper(session);
       return session;
     } catch (cause) {
       await release();
@@ -262,47 +364,22 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
   }
 
   private async closeSession(): Promise<void> {
+    this.#stopSweeper();
     this.#closing ??= (async () => {
-      const session = this.#session ?? (this.#launch ? await this.#launch : undefined);
-      if (session) await session.close();
-      this.#session = undefined;
+      const session =
+        this.#session ?? (this.#launch ? await this.#launch.catch(() => undefined) : undefined);
+      // 关闭开始时仍在启动的会话可能已重新启动清扫定时器。
+      this.#stopSweeper();
+      try {
+        if (session) await session.close();
+      } finally {
+        if (this.#session === session) this.#session = undefined;
+      }
     })().finally(() => {
       this.#closing = undefined;
     });
     await this.#closing;
   }
-}
-
-async function withAbort<T>(
-  operation: Promise<T>,
-  signal: AbortSignal | undefined,
-  uncertain: () => boolean,
-): Promise<T> {
-  if (!signal) return await operation;
-  return await new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      signal.removeEventListener("abort", onAbort);
-      reject(
-        new BacklinkBrowserError(
-          "BROWSER_ABORTED",
-          "Browser command was cancelled",
-          uncertain() ? { sideEffect: "uncertain" } : {},
-        ),
-      );
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-    void operation.then(
-      (value) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(value);
-      },
-      (error) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(error);
-      },
-    );
-    if (signal.aborted) onAbort();
-  });
 }
 
 export function createBacklinkBrowserRuntime(

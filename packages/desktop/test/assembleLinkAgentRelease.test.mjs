@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -78,4 +78,92 @@ test("release assembly rejects a stale or mismatched builder checksum", async (t
     assembleLinkAgentRelease({ version: "3.15.0", inputs, output: join(root, "ready") }),
     /missing expected artifact/,
   );
+});
+
+test("selected three-platform release never includes an unbuilt Windows ARM64 artifact", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "linkagent-selected-release-test-"));
+  t.after(async () => {
+    const { rm } = await import("node:fs/promises");
+    await rm(root, { recursive: true, force: true });
+  });
+  const version = "4.0.0";
+  const inputs = {};
+  const { stringify } = await import("yaml");
+  for (const target of ["mac-arm64", "mac-x64", "win-x64"]) {
+    const directory = join(root, target);
+    inputs[target] = directory;
+    await mkdir(directory);
+    const extensions = target.startsWith("mac-") ? ["dmg", "zip"] : ["exe"];
+    const files = [];
+    for (const extension of extensions) {
+      const name = `LinkAgent-${version}-${target}.${extension}`;
+      const data = Buffer.from(`payload:${name}`);
+      await writeFile(join(directory, name), data);
+      await writeFile(join(directory, `${name}.blockmap`), `blockmap:${name}`);
+      files.push({
+        url: name,
+        size: data.length,
+        sha512: createHash("sha512").update(data).digest("base64"),
+      });
+    }
+    await writeFile(
+      join(directory, target.startsWith("mac-") ? "latest-mac.yml" : "latest.yml"),
+      stringify({ version, files }),
+    );
+  }
+  const output = join(root, "ready");
+  await assembleLinkAgentRelease({
+    version,
+    inputs,
+    output,
+    selectedTargets: ["mac-arm64", "win-x64", "mac-x64"],
+  });
+  const mac = parse(await readFile(join(output, "latest-mac.yml"), "utf8"));
+  const win = parse(await readFile(join(output, "latest.yml"), "utf8"));
+  assert.equal(mac.files.length, 4);
+  assert.equal(mac.path, "LinkAgent-4.0.0-mac-x64.zip");
+  assert.deepEqual(
+    win.files.map((file) => file.url),
+    ["LinkAgent-4.0.0-win-x64.exe"],
+  );
+  assert(!(await readdir(output)).some((name) => name.includes("win-arm64")));
+
+  const macOnly = join(root, "mac-only");
+  await assembleLinkAgentRelease({
+    version,
+    inputs,
+    output: macOnly,
+    selectedTargets: ["mac-arm64"],
+  });
+  assert(!(await readdir(macOnly)).includes("latest.yml"));
+
+  await writeFile(join(inputs["win-x64"], "LinkAgent-4.0.0-win-x64.exe"), "corrupted");
+  await assert.rejects(
+    assembleLinkAgentRelease({
+      version,
+      inputs,
+      output: join(root, "corrupt"),
+      selectedTargets: ["win-x64"],
+    }),
+    /builder checksum mismatch/,
+  );
+});
+
+test("release assembly rejects an empty, duplicate, or unknown target selection", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "linkagent-invalid-target-test-"));
+  t.after(async () => {
+    const { rm } = await import("node:fs/promises");
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const selectedTargets of [[], ["win-x64", "win-x64"], ["win-ia32"]]) {
+    await assert.rejects(
+      assembleLinkAgentRelease({
+        version: "4.0.0",
+        inputs: {},
+        output: join(root, "unused"),
+        selectedTargets,
+      }),
+      /invalid release targets/,
+    );
+  }
 });

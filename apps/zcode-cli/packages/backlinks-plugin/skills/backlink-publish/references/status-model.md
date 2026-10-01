@@ -12,7 +12,7 @@
 | 有明确提交成功、待审核/收录回执                    | `submitted` + `anchorText` / `targetUrl`，可附 `publicUrl` / `evidence`       | 不重复提交，之后只读复核               |
 | 本条/同来源已有 submitted、live 或 publishedUrl    | 不认领、不覆盖原记录；汇总为“已有发布记录，未执行”                            | 可只读检查公开页面                     |
 | 尚未提交且公开目标站已有对应链接                   | `skipped` + `skipReason`                                                      | 说明查重依据                           |
-| CAPTCHA、人工登录/设备验证、资料或权限需要用户处理 | `failed` + `failureMode:"manual_required"` + `failureReason`，可附 `evidence` | 保留人工页面                           |
+| CAPTCHA、人工登录/设备验证、资料或权限需要用户处理 | `failed` + `failureMode:"manual_required"` + `failureReason`，可附 `evidence` | 页面自动 held 保留，批次结束统一处理   |
 | 提交之前可确认无副作用的网络/超时错误              | `failed` + `failureMode:"retryable"` + `failureReason`，可附 `evidence`       | 留待服务端或后续批次有界重试           |
 | 最终提交已发出但回执丢失、浏览器变更结果未知       | `failed` + `failureMode:"manual_required"` + `failureReason`                  | 核对公开页、站内记录和邮件，不重放提交 |
 | 提交后的 HTML 显示为纯文本，目标链接未生效         | `failed` + `failureMode:"manual_required"` + `failureReason`                  | 不能自动发第二条补救                   |

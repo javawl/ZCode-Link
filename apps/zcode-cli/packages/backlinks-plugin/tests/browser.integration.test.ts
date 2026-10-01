@@ -121,7 +121,10 @@ test(
         if (popup) break;
         await delay(50);
       }
-      assert.ok(popup, `popup must retain its explicit source tab: ${JSON.stringify(observedTabs)}`);
+      assert.ok(
+        popup,
+        `popup must retain its explicit source tab: ${JSON.stringify(observedTabs)}`,
+      );
       await browser.execute(
         { action: "waitFor", page: popup.page, url: `${baseUrl}/oauth` },
         request,

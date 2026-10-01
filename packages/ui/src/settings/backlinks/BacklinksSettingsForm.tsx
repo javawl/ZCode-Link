@@ -3,7 +3,25 @@ import type { BacklinksSettingsPatch, BacklinksSettingsSnapshot } from "@zcode/s
 import { Input } from "@/components/ui/input.js";
 import { Button } from "@/components/ui/button.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+
+type BrowserDisplayMode = BacklinksSettingsSnapshot["browser"]["displayMode"];
+
+/** 后台为推荐默认值，排在首位；无窗口模式无法人工验证，放在最后。 */
+const BROWSER_DISPLAY_MODES: readonly BrowserDisplayMode[] = ["background", "visible", "headless"];
+
+const BROWSER_DISPLAY_MODE_LABEL_KEYS: Record<BrowserDisplayMode, string> = {
+  background: "displayModeBackground",
+  visible: "displayModeVisible",
+  headless: "displayModeHeadless",
+};
 
 function ProviderFields({
   name,
@@ -92,7 +110,7 @@ export function BacklinksSettingsForm({
   const [mailboxDomain, setMailboxDomain] = useState(snapshot.mailboxDomain);
   const [browser, setBrowser] = useState(snapshot.browser);
   const [saved, setSaved] = useState(false);
-  const headlessId = useId();
+  const displayModeId = useId();
 
   useEffect(() => {
     setSupermanagerUrl(snapshot.supermanager.baseUrl);
@@ -129,7 +147,9 @@ export function BacklinksSettingsForm({
         },
         mailboxDomain,
         browser: {
-          headless: browser.headless,
+          displayMode: browser.displayMode,
+          // 规格要求设置界面同时写入派生的旧字段，旧读取方仍依赖 headless。
+          headless: browser.displayMode === "headless",
           channel: browser.channel,
           executablePath: browser.executablePath,
           userDataDir: browser.userDataDir ?? "",
@@ -229,16 +249,32 @@ export function BacklinksSettingsForm({
             />
           </label>
         </div>
-        <div className="flex items-center gap-2 text-ui-sm">
-          <Checkbox
-            id={headlessId}
-            checked={browser.headless}
-            onCheckedChange={(value) => setBrowser({ ...browser, headless: value === true })}
+        <div className="space-y-1 text-ui-sm">
+          <label htmlFor={displayModeId} className="block">
+            {t("displayMode")}
+          </label>
+          <Select
+            value={browser.displayMode}
+            onValueChange={(value) => {
+              setBrowser({ ...browser, displayMode: value as BrowserDisplayMode });
+              // 显式清除“已保存”提示，不依赖 Radix 隐藏原生 select 冒泡到表单的 change 事件。
+              setSaved(false);
+            }}
             disabled={saving}
-          />
-          <label htmlFor={headlessId}>{t("headless")}</label>
+          >
+            <SelectTrigger id={displayModeId} className="w-full justify-between">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start">
+              {BROWSER_DISPLAY_MODES.map((mode) => (
+                <SelectItem key={mode} value={mode}>
+                  {t(BROWSER_DISPLAY_MODE_LABEL_KEYS[mode])}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <p className="text-ui-sm text-foreground-subtle">{t("headlessHelp")}</p>
+        <p className="text-ui-sm text-foreground-subtle">{t("displayModeHelp")}</p>
       </fieldset>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={saving}>

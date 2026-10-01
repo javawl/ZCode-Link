@@ -12,15 +12,15 @@ user-invocable: true
 
 先用 `backlinks_status` 确认所选浏览器。已有 profile / CDP 登录态直接复用，在新页检查登录；不要复制 Cookie 或修改原有 `owned:false` 页面。
 
-1. 调用 `{"action":"status"}`，读取 `running` / `headless`。运行时默认是有界面 Chrome；尚未运行时状态检查本身不启动浏览器。远程宿主的 Chrome 窗口在宿主机器上，不在手机或浏览器客户端内。
+1. 调用 `{"action":"status"}`，读取 `running` / `displayMode`。默认 `displayMode` 为 `background`：有界面 Chrome 停靠在屏幕角落之外运行、不抢前台；尚未运行时状态检查本身不启动浏览器。远程宿主的 Chrome 窗口在宿主机器上，不在手机或浏览器客户端内。
 2. 调用 `{"action":"tabs"}`，复用明确属于本次会话检查的 `page`，或创建独立命名页：`{"action":"navigate","page":"google-session","url":"https://accounts.google.com","waitUntil":"domcontentloaded"}`。所有后续页面操作明确带此 `page`，不使用“当前活动页”或“最后打开的页”。
-3. `{"action":"snapshot","page":"google-session","format":"aria"}` 确认是否已经登录。已登录直接复核；未登录时 `{"action":"bringToFront","page":"google-session"}`，告知用户在宿主的 Chrome 窗口亲手完成 Google 登录和 2FA，不让用户把密码或验证码发到聊天。
+3. `{"action":"snapshot","page":"google-session","format":"aria"}` 确认是否已经登录。已登录直接复核；未登录时 `{"action":"bringToFront","page":"google-session"}` 显示该页（恢复窗口并激活 Chrome；`background` 与 `visible` 模式均可用），告知用户在宿主的 Chrome 窗口亲手完成 Google 登录和 2FA，不让用户把密码或验证码发到聊天。用户主动发起的 Google 登录直接显示，不延后；这与发布批次中人工阻碍先 `hold`、批次结束再统一询问不同。
 4. 约每 10 秒检查该页一次，最多观察 10 分钟；持续等待时保持简短进度说明。不要把 `waitFor` 当纯睡眠：它必须有目标 `selector` 或 `url`，等待上限用 `timeoutMs`。密码/验证码页只判断状态，不反复抓取敏感字段。用户取消即停止，超时报告“尚未确认完成”。
-5. 登录完成后，`{"action":"navigate","page":"google-session","url":"https://myaccount.google.com","waitUntil":"domcontentloaded"}` 再 snapshot 核验，报告会话当前是否就绪。可显示足以区分账号的脱敏邮箱；只有确需用户辨认账号时显示完整邮箱，不保存到发布证据。
+5. 登录完成后，`{"action":"navigate","page":"google-session","url":"https://myaccount.google.com","waitUntil":"domcontentloaded"}` 再 snapshot 核验，报告会话当前是否就绪。可显示足以区分账号的脱敏邮箱；只有确需用户辨认账号时显示完整邮箱，不保存到发布证据。核验完成或用户取消后调用 `{"action":"closePage","page":"google-session"}`，窗口随即重新停靠；超时“尚未确认完成”时调用 `{"action":"hold","page":"google-session","reason":"google login pending"}` 保留该页（最长 24 小时），告知用户完成后重新运行 /google-session 核验（对该页再次 `navigate` 会结束保留并重新开始）。
 
 ## Headless、远程与失败处理
 
-- `headless:true` 无法通过 `bringToFront` 提供可交互窗口。先说明需将外链浏览器设置为有界面模式，并在宿主打开窗口；不要假称窗口已显示。配置的重新启动时机以浏览器说明为准，避免关闭仍在执行的发布页。
+- `displayMode` 为 `"headless"` 时无法通过 `bringToFront` 提供可交互窗口。先说明需将外链浏览器显示模式设为 `background`（默认）或 `visible`，并在宿主打开窗口；不要假称窗口已显示。配置的重新启动时机以浏览器说明为准，避免关闭仍在执行的发布页。
 - 浏览器未安装或可执行路径错误：报告工具返回的具体错误，指向外链设置中的 `browser.channel` / `browser.executablePath`，不读取或复制用户其他浏览器的 Cookie。
 - 用户说“重置”时先明确其含义；普通初始化/检查不会清除 profile、退出其他账号或删除登录态。涉及更换账号时使用 Google 的正常界面，让用户处理密码与验证。
 

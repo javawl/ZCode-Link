@@ -33,7 +33,7 @@ test(
       JSON.stringify({
         version: 1,
         supermanager: { baseUrl, token: "local-fixture-token" },
-        browser: { headless: true, channel: "chrome" },
+        browser: { displayMode: "headless", channel: "chrome" },
       }),
       { mode: 0o600 },
     );
@@ -138,6 +138,11 @@ test(
       assert.ok(fixture.state.childToolSets.length > 0);
       assert.equal(fixture.state.submissions, 1);
       assert.equal(fixture.state.anchorObserved, true);
+      assert.equal(
+        fixture.state.pageRecycled,
+        true,
+        "item page must be recycled after item_result",
+      );
       assert.equal(fixture.state.reports.length, 1);
       assert.equal(fixture.state.releases, 1);
       assert.ok(fixture.state.heartbeats > 0);
