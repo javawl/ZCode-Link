@@ -21,7 +21,8 @@ import semver from "semver";
 import { LINKAGENT_UPDATE_REPOSITORY } from "../../scripts/desktop-product-identity.mjs";
 import { logger } from "./logger.js";
 import { getElectronReleasePlatform, ManifestUpdateProvider } from "./manifestUpdateProvider.js";
-const { autoUpdater } = pkg;
+import { InternalMacUpdater } from "./internalMacUpdater.js";
+const autoUpdater = process.platform === "darwin" ? new InternalMacUpdater() : pkg.autoUpdater;
 
 export const CHECK_FOR_UPDATE_MENU_ID = "check-for-update";
 const AUTO_UPDATE_POLL_INTERVAL_MS = 60 * 60 * 1000;
@@ -438,6 +439,8 @@ async function quitAndInstallUpdate(rejectUnavailable = false) {
   // 表现成点击更新后界面消失但进程没退、安装流程也不再继续。
   // 这里先通知主进程进入“允许真正关窗”的状态，再把控制权交给 updater。
   try {
+    // 内部 Mac 必须先验证并准备可写安装事务；不能收尾任务后才发现包损坏或安装目录只读。
+    if (autoUpdater instanceof InternalMacUpdater) await autoUpdater.prepareForInstall();
     // Windows 更新会替换 resources/glm 等随包资源；
     // 若 quitAndInstall 先于 host/agent 子进程完成退出，安装器可能在文件仍被占用时开始覆盖，
     // 最终留下“应用能启动但 bundled agent 丢失”的半更新状态。
@@ -447,6 +450,7 @@ async function quitAndInstallUpdate(rejectUnavailable = false) {
     // 安装前退出准备是释放 host/agent 与 resources/glm 文件锁的硬前置条件。
     // 如果这里失败后仍启动安装器，Windows 可能在资源仍被占用时覆盖安装目录，形成半更新。
     quitAndInstallInFlight = false;
+    if (autoUpdater instanceof InternalMacUpdater) await autoUpdater.cancelPreparedInstall();
     handleAutoUpdateFailure(error, "prepare quit and install failed");
     if (rejectUnavailable) {
       throw error;
@@ -468,7 +472,10 @@ async function quitAndInstallUpdate(rejectUnavailable = false) {
     // 3.3.0 的 Windows 自定义 PowerShell delayed launcher 在 detached/hidden
     // 模式下可能只创建 powershell.exe，却没有稳定执行到安装器启动，用户看到应用关闭但版本不变。
     // 这里恢复 electron-updater 原生安装入口，避免把“launcher 进程创建成功”误当成更新已接管。
-    autoUpdater.quitAndInstall();
+    await autoUpdater.quitAndInstall();
+  } catch (error) {
+    handleAutoUpdateFailure(error, "start update installer failed");
+    if (rejectUnavailable) throw error;
   } finally {
     quitAndInstallInFlight = false;
   }
@@ -1515,12 +1522,14 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   autoUpdater.allowDowngrade = false;
   // Windows/NSIS 在窗口关闭后会异步启动安装；如果用户紧接着关机，安装器可能被系统中断，
   // 留下半更新状态并导致下次启动失败。
-  // 这里仅在 Windows 关闭“退出即自动安装”，要求用户显式点更新；其他平台保持原有行为，避免改动既有升级链路。
-  autoUpdater.autoInstallOnAppQuit = process.platform !== "win32";
+  // 内部 Mac 同样要求明确点击安装，确保独立 helper 与任务退出准备走同一条路径。
+  autoUpdater.autoInstallOnAppQuit = process.platform !== "win32" && process.platform !== "darwin";
   autoUpdater.logger = logger;
   applyManifestUpdateProvider(options);
 
   const triggerCheckForUpdates = (reason: string) => {
+    // 安装事务已认领后不能被新一轮轮询换掉候选包，避免退出准备期间取消正在等待的 helper。
+    if (quitAndInstallInFlight) return;
     if (checkForUpdatesInFlight) {
       logger.info(`[auto-update] skip ${reason}: check already in flight`);
       return;
@@ -1560,6 +1569,7 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   });
 
   autoUpdater.on("update-available", (info: UpdateDownloadedInfoLike) => {
+    if (quitAndInstallInFlight) return;
     logger.info(`[auto-update] new version available: ${info.version}`);
     const infoChannel = readUpdateInfoReleaseChannel(info);
     if (shouldIgnoreStaleAvailableUpdate(infoChannel)) {
@@ -1632,6 +1642,7 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   });
 
   autoUpdater.on("update-not-available", (info) => {
+    if (quitAndInstallInFlight) return;
     void settleAutoUpdateCheckResult("update not available", () => {
       logger.info(
         `[auto-update] already up to date (local=${getCurrentAppVersionForUpdate()}, remote=${info.version})`,

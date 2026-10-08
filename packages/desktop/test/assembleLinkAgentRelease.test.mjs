@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { mkdtemp, readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { parse } from "yaml";
 import { assembleLinkAgentRelease } from "../scripts/assemble-linkagent-release.mjs";
+import { verifySignedUpdate } from "../resources/internal-update/internal-update-protocol.mjs";
 
 test("release assembly keeps both architectures in each verified update manifest", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "linkagent-release-test-"));
@@ -87,6 +88,13 @@ test("selected three-platform release never includes an unbuilt Windows ARM64 ar
     await rm(root, { recursive: true, force: true });
   });
   const version = "4.0.0";
+  const keys = generateKeyPairSync("ed25519");
+  const signingKeyFile = join(root, "fixture-private.pem");
+  await writeFile(signingKeyFile, keys.privateKey.export({ type: "pkcs8", format: "pem" }));
+  const signing = {
+    signingKeyFile,
+    trustedPublicKey: keys.publicKey.export({ type: "spki", format: "pem" }),
+  };
   const inputs = {};
   const { stringify } = await import("yaml");
   for (const target of ["mac-arm64", "mac-x64", "win-x64"]) {
@@ -117,6 +125,7 @@ test("selected three-platform release never includes an unbuilt Windows ARM64 ar
     inputs,
     output,
     selectedTargets: ["mac-arm64", "win-x64", "mac-x64"],
+    ...signing,
   });
   const mac = parse(await readFile(join(output, "latest-mac.yml"), "utf8"));
   const win = parse(await readFile(join(output, "latest.yml"), "utf8"));
@@ -127,6 +136,12 @@ test("selected three-platform release never includes an unbuilt Windows ARM64 ar
     ["LinkAgent-4.0.0-win-x64.exe"],
   );
   assert(!(await readdir(output)).some((name) => name.includes("win-arm64")));
+  const signed = JSON.parse(await readFile(join(output, "linkagent-update.json"), "utf8"));
+  for (const arch of ["arm64", "x64"])
+    assert.equal(
+      verifySignedUpdate(signed, { version, arch }, keys.publicKey).name,
+      `LinkAgent-${version}-mac-${arch}.zip`,
+    );
 
   const macOnly = join(root, "mac-only");
   await assembleLinkAgentRelease({
@@ -134,8 +149,14 @@ test("selected three-platform release never includes an unbuilt Windows ARM64 ar
     inputs,
     output: macOnly,
     selectedTargets: ["mac-arm64"],
+    ...signing,
   });
   assert(!(await readdir(macOnly)).includes("latest.yml"));
+  const signedMacOnly = JSON.parse(await readFile(join(macOnly, "linkagent-update.json"), "utf8"));
+  assert.throws(
+    () => verifySignedUpdate(signedMacOnly, { version, arch: "x64" }, keys.publicKey),
+    /architecture/,
+  );
 
   await writeFile(join(inputs["win-x64"], "LinkAgent-4.0.0-win-x64.exe"), "corrupted");
   await assert.rejects(
@@ -166,4 +187,29 @@ test("release assembly rejects an empty, duplicate, or unknown target selection"
       /invalid release targets/,
     );
   }
+});
+
+test("Mac v4 release cannot be assembled with a missing or regenerated signing key", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "linkagent-key-test-"));
+  t.after(async () => {
+    const { rm } = await import("node:fs/promises");
+    await rm(root, { recursive: true, force: true });
+  });
+  const options = {
+    version: "4.0.0",
+    inputs: {},
+    output: join(root, "unused"),
+    selectedTargets: ["mac-arm64"],
+  };
+  await assert.rejects(
+    assembleLinkAgentRelease({ ...options, signingKeyFile: null }),
+    /SIGNING_KEY_FILE/,
+  );
+  const keys = generateKeyPairSync("ed25519");
+  const file = join(root, "wrong-private.pem");
+  await writeFile(file, keys.privateKey.export({ type: "pkcs8", format: "pem" }));
+  await assert.rejects(
+    assembleLinkAgentRelease({ ...options, signingKeyFile: file }),
+    /pinned public key/,
+  );
 });

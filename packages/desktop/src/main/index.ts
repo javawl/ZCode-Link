@@ -97,6 +97,7 @@ import {
   syncPostUpdateReleaseNotesToWindow,
   syncReadyUpdateToWindow,
 } from "./autoUpdater.js";
+import { acknowledgeMacStartup } from "../../resources/internal-update/mac-update-install.mjs";
 import { BroadcastHub } from "./broadcastHub.js";
 import { TaskRealtimeBus } from "./taskRealtimeBus.js";
 import { createAppLaunchGate } from "./appLaunchGate.js";
@@ -1791,6 +1792,18 @@ function createWindowInstance(startupBootstrap: StartupWindowBootstrap = {}) {
     },
   });
   registerStabilityMainWindow(win);
+  if (process.platform === "darwin" && process.argv.includes("--linkagent-update-plan")) {
+    // 创建辅助窗口或 app.ready 不能证明升级成功；只由真实主窗口完成加载后确认安装事务。
+    win.webContents.once("did-finish-load", () => {
+      void acknowledgeMacStartup({
+        argv: process.argv,
+        execPath: process.execPath,
+        version: app.getVersion(),
+      }).catch((error: unknown) => {
+        logger.error("[internal-mac-update] startup acknowledgement failed", error);
+      });
+    });
+  }
   return win;
 }
 

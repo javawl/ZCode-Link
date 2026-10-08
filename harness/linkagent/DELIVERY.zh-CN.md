@@ -94,9 +94,29 @@ pnpm dev:desktop
 
 先前发布的 LinkAgent 3.14.0 提供 macOS arm64/x64 DMG 与 Windows x64/arm64 NSIS 安装包；它们未签名或公证，也未验证 Windows 实机安装、真实模型请求与真实外链发布。该版本没有独立更新渠道。
 
-3.15.0 已将更新源独立绑定到 `javawl/ZCode-Link` GitHub Releases，并作为未签名测试预发布提供下载。3.14.0 客户端不具备自动升级能力，须在取得签名凭据并发布正式包后手动安装一次。后续验收与发布门槛见 [在线更新规格](./UPDATE-SPEC.zh-CN.md)。
+3.15.0 已将更新源独立绑定到 `javawl/ZCode-Link` GitHub Releases，并作为未签名测试预发布提供下载。3.14.0 客户端不具备自动升级能力，须手动安装一次新版本。后续验收与发布门槛见 [在线更新规格](./UPDATE-SPEC.zh-CN.md)。
 
-4.0.0 纳入当前浏览器后台运行与页面回收代码，发布平台限定为 macOS Apple Silicon、macOS Intel 和 Windows x64。汇总脚本可显式选择平台，只生成所选平台的产物与升级清单；本地源码提交先固定再构建，旧版本产物待 GitHub 附件公开核验通过后清理。缺少签名凭据时继续按测试预发布交付，不宣称已验证客户端内升级。
+4.0.0 纳入当前浏览器后台运行与页面回收代码，平台限定为 macOS Apple Silicon、macOS Intel 和 Windows x64。Mac 内部版增加独立安装程序，复用现有更新界面和 GitHub 版本选择；ZIP 使用项目自己的 Ed25519 发布密钥验签，准备就绪后等待旧进程退出再替换，真实主窗口启动确认失败时恢复旧版。无需 Apple Developer ID，但不改变首次安装、文件权限和系统授权要求。Windows 保留 NSIS 更新流程。
+
+后续版本必须递增版本号、保持 `dev.linkagent.app` 身份，并使用同一发布私钥生成 `linkagent-update.json`。私钥保存在构建机仓库外的 `~/.local/share/linkagent-release/update-signing-private.pem`（权限 0600），必须另行安全备份；不要删除、重新生成、写入 Git 或上传为 Release 附件。发布流水线通过 `LINKAGENT_UPDATE_SIGNING_KEY_FILE` 指定私钥文件。汇总脚本拒绝缺失私钥或与客户端公钥不一致的密钥。
+
+```sh
+# INPUT_DIR 包含 mac-arm64、mac-x64、win-x64 三个构建目录。
+LINKAGENT_UPDATE_SIGNING_KEY_FILE="$HOME/.local/share/linkagent-release/update-signing-private.pem" \
+  node packages/desktop/scripts/assemble-linkagent-release.mjs \
+  --version 4.0.0 --input-root "$INPUT_DIR" --output "$OUTPUT_DIR" \
+  --targets mac-arm64,mac-x64,win-x64
+```
+
+完整附件为三个安装器、两个 Mac ZIP、五个 blockmap、两份 latest 清单、签名的 `linkagent-update.json` 和 `SHA256SUMS`。全部核验后再公开 GitHub Release。预发布需要用户开启「接受提前收到预览版更新」，普通 Release 走默认稳定通道。用户数据不随 `.app` 替换；安装目录应由当前用户可写（例如 `~/Applications`），不要从 DMG 安装盘直接执行更新。
+
+内部 Mac 更新的自动化验证：
+
+```sh
+node --test packages/desktop/test/internalMacUpdate.test.mjs packages/desktop/test/assembleLinkAgentRelease.test.mjs
+LINKAGENT_UPDATE_SIGNING_KEY_FILE="$HOME/.local/share/linkagent-release/update-signing-private.pem" \
+  node --test packages/desktop/test/internalMacUpdater.e2e.mjs
+```
 
 ## 发布首条输入外键错误修复
 

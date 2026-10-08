@@ -1,9 +1,15 @@
-import { createHash } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse, stringify } from "yaml";
+import {
+  createSignedUpdate,
+  UPDATE_MANIFEST_NAME,
+  UPDATE_PUBLIC_KEY,
+  verifySignedUpdate,
+} from "../resources/internal-update/internal-update-protocol.mjs";
 
 const allTargets = ["mac-x64", "mac-arm64", "win-x64", "win-arm64"];
 
@@ -40,6 +46,8 @@ export async function assembleLinkAgentRelease({
   inputs,
   output,
   selectedTargets = allTargets,
+  signingKeyFile = process.env.LINKAGENT_UPDATE_SIGNING_KEY_FILE,
+  trustedPublicKey = UPDATE_PUBLIC_KEY,
 }) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`invalid release version: ${version}`);
@@ -54,6 +62,23 @@ export async function assembleLinkAgentRelease({
   }
   // 三平台发布不能隐式要求未构建的 Windows ARM64；仍按固定顺序保留旧版 x64 fallback。
   const targets = allTargets.filter((target) => selectedTargets.includes(target));
+  const needsSignedMacUpdate =
+    Number(version.split(".")[0]) >= 4 && targets.some((target) => target.startsWith("mac-"));
+  let signingKey;
+  if (needsSignedMacUpdate) {
+    if (!signingKeyFile)
+      throw new Error(
+        "Mac internal updates require LINKAGENT_UPDATE_SIGNING_KEY_FILE; never regenerate the pinned release key",
+      );
+    signingKey = createPrivateKey(await readFile(signingKeyFile));
+    if (
+      signingKey.asymmetricKeyType !== "ed25519" ||
+      !createPublicKey(signingKey)
+        .export({ type: "spki", format: "der" })
+        .equals(createPublicKey(trustedPublicKey).export({ type: "spki", format: "der" }))
+    )
+      throw new Error("Release signing key does not match the client's pinned public key");
+  }
   const collected = { mac: [], win: [] };
   await mkdir(output, { recursive: true });
 
@@ -97,6 +122,22 @@ export async function assembleLinkAgentRelease({
       stringify({ version, files, path: first.url, sha512: first.sha512, releaseDate }),
       { flag: "wx" },
     );
+  }
+  if (needsSignedMacUpdate) {
+    const files = collected.mac
+      .filter((file) => file.url.endsWith(".zip"))
+      .map((file) => ({
+        arch: file.url.includes("-arm64.") ? "arm64" : "x64",
+        name: file.url,
+        size: file.size,
+        sha512: file.sha512,
+      }));
+    const envelope = createSignedUpdate({ version, files }, signingKey);
+    for (const file of files)
+      verifySignedUpdate(envelope, { version, arch: file.arch }, trustedPublicKey);
+    await writeFile(join(output, UPDATE_MANIFEST_NAME), JSON.stringify(envelope, null, 2) + "\n", {
+      flag: "wx",
+    });
   }
   return collected;
 }

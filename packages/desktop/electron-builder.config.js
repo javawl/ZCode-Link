@@ -571,6 +571,12 @@ export default {
     ...(targetPlatform.os === "darwin"
       ? [
           {
+            // 独立更新程序必须在旧 .app 被替换后继续运行，复制到私有事务目录后再启动。
+            from: "resources/internal-update",
+            to: "internal-update",
+            filter: ["*.mjs"],
+          },
+          {
             // CUA 权限浮窗的吸附数据源（CGWindowListCopyWindowInfo，不需要任何 TCC 权限）。
             // 主进程按 process.resourcesPath 解析；缺失时 watcher fail-open，浮窗仍可用
             // 只是不吸附，所以这里不做存在性断言。
