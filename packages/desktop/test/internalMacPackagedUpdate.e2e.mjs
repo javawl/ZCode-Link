@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { mkdtemp, mkdir, open, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, open, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -134,9 +134,31 @@ for (const failStartup of [false, true]) {
       await new Promise((done) => server.listen(0, "127.0.0.1", done));
       let electron;
       let result;
+      let stage = "launch";
+      let stderr = "";
+      const evidence = process.env.LINKAGENT_UPDATE_QA_EVIDENCE_DIR;
       t.after(async () => {
         server.closeAllConnections();
         server.close();
+        if (!result && evidence) {
+          const failurePath = join(
+            evidence,
+            `${arch}-${failStartup ? "rollback" : "success"}-failure`,
+          );
+          await mkdir(failurePath, { recursive: true });
+          await writeFile(join(failurePath, "stderr.txt"), stderr);
+          await cp(join(data, ".zcode/v2/logs"), join(failurePath, "logs"), {
+            recursive: true,
+          }).catch(() => {});
+          console.error(
+            `Packaged ${arch} failed at ${stage}; windows: ${electron
+              ?.windows()
+              .map((window) => window.url())
+              .join(", ")}`,
+          );
+          for (const [i, window] of (electron?.windows() ?? []).entries())
+            await window.screenshot({ path: join(failurePath, `window-${i}.png`) }).catch(() => {});
+        }
         if (result?.pid) {
           try {
             process.kill(-result.pid, "SIGTERM");
@@ -165,22 +187,25 @@ for (const failStartup of [false, true]) {
           ZCODE_DISABLE_FIXED_REMOTE_DEBUGGING_PORT: "1",
         },
       });
+      electron.process().stderr.on("data", (chunk) => {
+        stderr = (stderr + chunk).slice(-1_000_000);
+      });
       const page = await electron.firstWindow();
       page.setDefaultTimeout(90_000);
+      stage = "main window ready";
       await page.getByTestId("task-settings-button").waitFor();
+      stage = "check";
       await electron.evaluate(({ session }, port) => {
-        session
-          .fromPartition("electron-updater", { cache: false })
-          .webRequest.onBeforeRequest(
-            {
-              urls: [
-                "https://github.com/javawl/ZCode-Link/*",
-                "https://api.github.com/repos/javawl/ZCode-Link/*",
-              ],
-            },
-            (details, callback) =>
-              callback({ redirectURL: `http://127.0.0.1:${port}${new URL(details.url).pathname}` }),
-          );
+        session.fromPartition("electron-updater", { cache: false }).webRequest.onBeforeRequest(
+          {
+            urls: [
+              "https://github.com/javawl/ZCode-Link/*",
+              "https://api.github.com/repos/javawl/ZCode-Link/*",
+            ],
+          },
+          (details, callback) =>
+            callback({ redirectURL: `http://127.0.0.1:${port}${new URL(details.url).pathname}` }),
+        );
       }, port);
       const deadline = Date.now() + 120_000;
       while ((await page.evaluate(() => window.zcode.getUpdateState())).kind === "checking") {
@@ -197,19 +222,20 @@ for (const failStartup of [false, true]) {
         assert(Date.now() < deadline, JSON.stringify(state));
         await delay(200);
       } while (state.kind !== "update-available");
+      stage = "download";
       await page.evaluate(() => window.zcode.downloadUpdate());
       do {
         state = await page.evaluate(() => window.zcode.getUpdateState());
         assert(Date.now() < deadline, JSON.stringify(state));
         await delay(200);
       } while (state.kind !== "update-downloaded");
-      const evidence = process.env.LINKAGENT_UPDATE_QA_EVIDENCE_DIR;
       if (evidence) {
         await mkdir(evidence, { recursive: true });
         await page.screenshot({
           path: join(evidence, `${arch}-${failStartup ? "rollback" : "success"}-ready.png`),
         });
       }
+      stage = "install";
       const install = page.evaluate(() => window.zcode.quitAndInstallUpdate()).catch(() => {});
       const resultPath = join(data, "electron/internal-mac-update/last-result.json");
       const installDeadline = Date.now() + 180_000;
