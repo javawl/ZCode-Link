@@ -165,7 +165,7 @@ export class BacklinksConfigStore {
               ...rest,
             };
             const previousMode = resolveBrowserDisplayMode(current.browser);
-            // 旧客户端只发送 headless：true 表示无窗口；false 从无窗口回到默认后台，其余保持原模式。
+            // 旧客户端只发送 headless：true 表示无窗口；false 从无窗口回到默认可见，其余保持原模式。
             const mode =
               requested ??
               (rest.headless === undefined
@@ -173,13 +173,13 @@ export class BacklinksConfigStore {
                 : rest.headless
                   ? "headless"
                   : previousMode === "headless"
-                    ? "background"
+                    ? "visible"
                     : previousMode);
             if (mode) {
-              // 默认后台不写字段、无窗口只用旧 headless 字段；仅调试用 visible 写入新字段，
-              // 让未改显示方式的配置文件仍能被旧版本读取。
+              // 默认可见不写字段、无窗口只用旧 headless 字段；静默用 background 写入 displayMode，
+              // 让未改显示方式（或只在可见/无窗口间切换）的配置文件仍能被旧版本读取。
               browser.headless = mode === "headless";
-              if (mode === "visible") browser.displayMode = "visible";
+              if (mode === "background") browser.displayMode = "background";
               else delete browser.displayMode;
             }
             merged.browser = browser;

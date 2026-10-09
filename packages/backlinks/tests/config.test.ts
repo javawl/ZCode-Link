@@ -154,12 +154,12 @@ test("independent processes preserve each other's settings updates", async () =>
   }
 });
 
-test("browser display mode defaults to background and maps the legacy headless flag", async () => {
+test("browser display mode defaults to visible and maps the legacy headless flag", async () => {
   const dir = await mkdtemp(join(tmpdir(), "backlinks-display-mode-"));
   try {
     const runtime = createBacklinksRuntime({ dataBaseDir: dir, env: {} });
     const initial = await runtime.getSettings();
-    assert.equal(initial.browser.displayMode, "background");
+    assert.equal(initial.browser.displayMode, "visible");
     assert.equal(initial.browser.headless, false);
     const path = join(dir, ".zcode", "v2", "backlinks.json");
     await runtime.updateSettings({});
@@ -167,17 +167,22 @@ test("browser display mode defaults to background and maps the legacy headless f
     const legacy = await runtime.getSettings();
     assert.equal(legacy.browser.displayMode, "headless");
     assert.equal(legacy.browser.headless, true);
+    // 只发送 headless 的旧客户端：false 表示从无窗口回到默认可见。
+    const legacyWindowed = await runtime.updateSettings({ browser: { headless: false } });
+    assert.equal(legacyWindowed.browser.displayMode, "visible");
+    assert.equal(legacyWindowed.browser.headless, false);
     const visible = await runtime.updateSettings({ browser: { displayMode: "visible" } });
     assert.equal(visible.browser.displayMode, "visible");
     assert.equal(visible.browser.headless, false);
     const stored = JSON.parse(await readFile(path, "utf8"));
-    assert.equal(stored.browser.displayMode, "visible");
-    assert.equal(stored.browser.headless, false, "the legacy flag follows the selected mode");
+    // 默认可见不写字段，旧版本读取同一文件不会因为新字段失败。
+    assert.equal("displayMode" in stored.browser, false);
+    assert.equal(stored.browser.headless, false);
     const background = await runtime.updateSettings({ browser: { displayMode: "background" } });
     assert.equal(background.browser.displayMode, "background");
-    // 默认与无窗口只用旧字段表达，旧版本读取同一文件不会因为新字段失败。
+    // 静默后台显式持久化，缺省（可见）不会被误读为后台。
     const backgroundFile = JSON.parse(await readFile(path, "utf8"));
-    assert.equal("displayMode" in backgroundFile.browser, false);
+    assert.equal(backgroundFile.browser.displayMode, "background");
     assert.equal(backgroundFile.browser.headless, false);
     await runtime.updateSettings({ browser: { displayMode: "headless" } });
     const headlessFile = JSON.parse(await readFile(path, "utf8"));

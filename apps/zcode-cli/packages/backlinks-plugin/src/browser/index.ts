@@ -71,7 +71,7 @@ class PersistentBacklinkBrowser implements BacklinkBrowserRuntime {
       ...(options.ignoreDefaultArgs ? { ignoreDefaultArgs: [...options.ignoreDefaultArgs] } : {}),
     };
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_BROWSER_TIMEOUT_MS;
-    this.#displayMode = options.displayMode ?? (options.headless ? "headless" : "background");
+    this.#displayMode = options.displayMode ?? (options.headless ? "headless" : "visible");
     this.#now = options.now ?? Date.now;
     if (
       !Number.isSafeInteger(this.#timeoutMs) ||

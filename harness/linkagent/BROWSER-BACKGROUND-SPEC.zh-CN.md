@@ -2,7 +2,7 @@
 
 ## 目标
 
-1. 日常发布不抢占用户鼠标与键盘：浏览器默认在后台运行，除用户同意的人工处理外不切换前台应用。
+1. 日常发布浏览器以正常可见窗口运行：发布任务在同一个窗口的标签页中执行，空闲标签回收复用，不因发布流程额外打开新窗口；需要静默运行时可选择后台模式（窗口停靠屏幕外，不抢占前台）。
 2. 页面不堆积：页面生命周期由浏览器 adapter 按条目结果、空闲时间与数量上限自动回收，不依赖模型记得 `closePage`。
 3. 人工处理集中到批次末尾：子代理遇到验证码、二次验证等阻碍时只标记并保留页面，批次结束后由父任务一次询问用户是否现在处理。
 
@@ -30,11 +30,11 @@
 
 `browser.displayMode`：`"background" | "visible" | "headless"`。
 
-- `background`（默认）：有界面 Chrome。窗口一律保持 normal 状态并“停靠”（`left:-32000, top:32000, 500×375`，由 Chrome 夹取到显示器角落，仅剩细边），不使用最小化。启动后立即停靠初始窗口并在 macOS 把前台还给原应用；新页面通过浏览器级 CDP 以后台标签创建，创建后立即重新停靠；站点弹窗出现即停靠其窗口并归还前台；除 `bringToFront` 外不做任何激活。`bringToFront` 把窗口移回可见位置（80,80，1280×900，同样由 Chrome 夹取）。
-- `visible`：保持现有行为（调试用）。
+- `visible`（默认）：有界面 Chrome 以正常窗口运行。发布页面一律在既有窗口内以标签页打开（优先复用空闲池中的标签），不新建窗口、不停靠、不归还前台；同一任务使用同一逻辑页名即始终在同一标签。站点弹窗由 Chrome 正常打开。
+- `background`（可选静默模式）：有界面 Chrome。窗口一律保持 normal 状态并“停靠”（`left:-32000, top:32000, 500×375`，由 Chrome 夹取到显示器角落，仅剩细边），不使用最小化。启动后立即停靠初始窗口并在 macOS 把前台还给原应用；新页面通过浏览器级 CDP 以后台标签创建，已知存在用户窗口或显示中窗口时以 `newWindow` 新建自有窗口，创建后立即重新停靠；站点弹窗出现即停靠其窗口并归还前台；除 `bringToFront` 外不做任何激活。`bringToFront` 把窗口移回可见位置（80,80，1280×900，同样由 Chrome 夹取）。
 - `headless`：现有无窗口模式。
-- 兼容：未设置 `displayMode` 时，旧 `headless:true` 映射为 `headless`，其他情况映射为 `background`。快照同时返回 `displayMode` 与派生的 `headless`（`displayMode === "headless"`）。`BacklinksConfigStore` 仍是唯一写入方。
-- 最小写入：`background` 不写 `displayMode`（缺省即后台），`headless` 只写旧字段 `headless:true`，仅调试用 `visible` 写入 `displayMode:"visible"`。只发送 `headless` 的旧客户端：`true` → 无窗口；`false` 从无窗口回到后台，其余保持原模式。这样不改显示方式（或只在后台/无窗口间切换）的配置文件仍能被旧版本读取。
+- 兼容：未设置 `displayMode` 时，旧 `headless:true` 映射为 `headless`，其他情况映射为 `visible`。快照同时返回 `displayMode` 与派生的 `headless`（`displayMode === "headless"`）。`BacklinksConfigStore` 仍是唯一写入方。历史文件中旧版本写入的 `displayMode:"visible"` 与新缺省同义；旧版本缺省（未写 `displayMode`）曾表示后台，升级后按新缺省解析为可见，需要后台的用户在设置中重新选择即可（此后显式持久化）。
+- 最小写入：`visible` 不写 `displayMode`（缺省即可见），`headless` 只写旧字段 `headless:true`，静默用 `background` 写入 `displayMode:"background"`。只发送 `headless` 的旧客户端：`true` → 无窗口；`false` 从无窗口回到默认可见，其余保持原模式。这样未改显示方式（或只在可见/无窗口间切换）的配置文件仍能被旧版本读取。
 - 前向容忍：读取配置文件时保留未知字段（顶层与 `browser`），写回时原样保留，但不投影到快照或运行时；用户输入（设置界面、stdin 配置脚本）仍严格校验未知字段。
 - 前台归还只在 macOS 实现：通过 `lsappinfo front` 判断前台进程是否为本插件启动的 Chrome 主进程（按 PID，不按 bundle id，避免误伤用户日常 Chrome），是才执行一次 hide→unhide。失败只记录，不阻塞自动化。Windows / Linux 仅做后台标签与停靠。
 - CDP 复用用户浏览器时：只以后台标签创建页面；绝不移动、隐藏或归还用户浏览器的前台；不启用页面池（回收即关闭自建页）。
@@ -112,13 +112,13 @@ sequenceDiagram
 - 前台归还、停靠、后台标签创建失败：记录后回退到普通 `newPage()`，不阻塞发布，不重试提交。
 - 页面回收失败：关闭该页；关闭仍失败则丢弃记录。
 - 用户在人工处理期间关闭标签：记录移除，不影响后台条目状态。
-- 降级风险：旧版本的配置 schema 为严格对象。只有选择“可见窗口”后文件才含 `displayMode`，此时旧版本（含未重新构建的开发产物，本地 E2E 已实际复现）读取会报解析错误；回退旧版本前把显示方式改回后台或无窗口即可。
+- 降级风险：旧版本的配置 schema 为严格对象。只有选择“后台”后文件才含 `displayMode`，此时旧版本（含未重新构建的开发产物，本地 E2E 已实际复现）读取会报解析错误；回退旧版本前把显示方式改回可见或无窗口即可。
 
 ## 验收
 
-1. 配置：缺省为 `background`；旧 `headless:true` 读为 `headless`；保存 `displayMode` 后重读一致；非法值拒绝且不覆盖原配置。
-2. 运行时（fake Chromium）：页面池复用、`item_result` 各状态的回收/保留、弹窗随条目关闭、`hold` / `tabs` / `status` 字段、空闲清扫与 held TTL、执行中动作不被回收、CDP 模式不入池。
+1. 配置：缺省为 `visible`；旧 `headless:true` 读为 `headless`；保存 `displayMode` 后重读一致（`visible`/`headless` 不写 `displayMode`，`background` 写入）；非法值拒绝且不覆盖原配置。
+2. 运行时（fake Chromium）：页面池复用、`item_result` 各状态的回收/保留、弹窗随条目关闭、`hold` / `tabs` / `status` 字段、空闲清扫与 held TTL、执行中动作不被回收、CDP 模式不入池；可见模式下发布页面都在既有窗口的标签页中打开，不新建窗口。
 3. Handler：两个 `item_result` 入口都触发回收；浏览器未启动时不启动；回收失败不影响结果。
 4. 真实 Chrome（macOS，`ZCODE_BACKLINKS_FOCUS_TEST=1`）：后台模式完整本地流程中普通发布与回收阶段 Chrome 从不成为前台，启动与弹窗阶段各不超过 2 秒；锁屏状态下截图与脚本正常；回写后只剩 held 页。
-5. 设置界面三档选择、中英文；本地完整发布 Electron E2E 通过并断言回写后该条目页面不再出现在 `tabs`。
+5. 设置界面三档选择（可见窗口为推荐默认）、中英文；本地完整发布 Electron E2E 通过并断言回写后该条目页面不再出现在 `tabs`。
 6. 执行 `pnpm typecheck`、`pnpm lint`、`pnpm architecture:check --changed` 与相关包测试，如实报告。

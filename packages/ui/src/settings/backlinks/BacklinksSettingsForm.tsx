@@ -14,8 +14,8 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 
 type BrowserDisplayMode = BacklinksSettingsSnapshot["browser"]["displayMode"];
 
-/** 后台为推荐默认值，排在首位；无窗口模式无法人工验证，放在最后。 */
-const BROWSER_DISPLAY_MODES: readonly BrowserDisplayMode[] = ["background", "visible", "headless"];
+/** 可见窗口为推荐默认值，排在首位；无窗口模式无法人工验证，放在最后。 */
+const BROWSER_DISPLAY_MODES: readonly BrowserDisplayMode[] = ["visible", "background", "headless"];
 
 const BROWSER_DISPLAY_MODE_LABEL_KEYS: Record<BrowserDisplayMode, string> = {
   background: "displayModeBackground",

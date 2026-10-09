@@ -234,11 +234,11 @@ test(
       assert.equal(attached.mailboxDomain, "");
       assert.equal(attached.browser.displayMode, "background");
       const displayMode = page.getByLabel("浏览器显示方式", { exact: true });
-      assert.equal((await displayMode.textContent())?.trim(), "后台（推荐）");
+      assert.equal((await displayMode.textContent())?.trim(), "后台");
       await displayMode.click();
       assert.deepEqual(await page.getByRole("option").allTextContents(), [
-        "后台（推荐）",
-        "可见窗口",
+        "可见窗口（推荐）",
+        "后台",
         "无窗口",
       ]);
       await page.getByRole("option", { name: "无窗口", exact: true }).click();
@@ -252,7 +252,7 @@ test(
       await savedStatus.waitFor();
       assert.equal((await displayMode.textContent())?.trim(), "无窗口");
       await displayMode.click();
-      await page.getByRole("option", { name: "可见窗口", exact: true }).click();
+      await page.getByRole("option", { name: "可见窗口（推荐）", exact: true }).click();
       assert.equal(await savedStatus.count(), 0);
       await page.getByRole("button", { name: "保存设置", exact: true }).click();
       await page.waitForFunction(() => window.backlinksTest.settingsPatches.length === 6);

@@ -81,7 +81,7 @@ export const browserCdpEndpointSchema = z
     if (url.hostname === "localhost") url.hostname = "127.0.0.1";
     return url.origin;
   });
-/** background 为默认：有界面浏览器在后台运行，不抢占前台；visible 用于调试；headless 无窗口。 */
+/** visible 为默认：浏览器以正常可见窗口运行；background 为可选静默模式；headless 无窗口。 */
 export const browserDisplayModeSchema = z.enum(["background", "visible", "headless"]);
 export type BrowserDisplayMode = z.infer<typeof browserDisplayModeSchema>;
 const browserShape = {
@@ -157,10 +157,10 @@ export interface EffectiveBacklinksConfig {
   readonly browser: BacklinksSettingsSnapshot["browser"];
 }
 
-/** 显式 displayMode 优先；旧配置只有 headless 时按其映射，其余一律使用后台模式。 */
+/** 显式 displayMode 优先；旧配置只有 headless 时按其映射，其余一律使用可见窗口。 */
 export function resolveBrowserDisplayMode(browser?: {
   readonly displayMode?: BrowserDisplayMode;
   readonly headless?: boolean;
 }): BrowserDisplayMode {
-  return browser?.displayMode ?? (browser?.headless === true ? "headless" : "background");
+  return browser?.displayMode ?? (browser?.headless === true ? "headless" : "visible");
 }
